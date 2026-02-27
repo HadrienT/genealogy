@@ -3,6 +3,7 @@ import { useFamily } from "../hooks/useFamily";
 import type { Person } from "../types/person";
 import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceSelection } from "./PlaceAutocomplete";
+import { useI18n } from "../hooks/useI18n";
 
 const emptyForm: Omit<Person, "id"> = {
   firstName: "",
@@ -28,6 +29,7 @@ const AddPersonForm: React.FC<{
   initialPartnerIds?: string[];
 }> = ({ onClose, initialParentIds, initialChildIds, initialPartnerIds }) => {
   const { addPerson, people } = useFamily();
+  const { t } = useI18n();
   const [form, setForm] = useState(emptyForm);
   const [latStr, setLatStr] = useState("");
   const [lngStr, setLngStr] = useState("");
@@ -115,7 +117,7 @@ const AddPersonForm: React.FC<{
           }}
         >
           <h2 style={{ margin: 0, fontSize: 18, color: "#1e293b" }}>
-            Add Person
+            {t("add.title")}
           </h2>
           <button onClick={onClose} style={closeBtnStyle}>
             ✕
@@ -125,32 +127,32 @@ const AddPersonForm: React.FC<{
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={rowStyle}>
             <Field
-              label="First name"
+              label={t("add.firstName")}
               value={form.firstName ?? ""}
               onChange={(v) => set("firstName", v)}
             />
             <Field
-              label="Last name"
+              label={t("add.lastName")}
               value={form.lastName ?? ""}
               onChange={(v) => set("lastName", v)}
             />
           </div>
 
           <Field
-            label="Middle names"
+            label={t("add.middleNames")}
             value={form.middleNames ?? ""}
             onChange={(v) => set("middleNames", v)}
-            placeholder="e.g. Marie Jean"
+            placeholder={t("add.middleNamesPlaceholder")}
           />
 
           <div style={rowStyle}>
             <Field
-              label="Maiden name"
+              label={t("add.maidenName")}
               value={form.maidenName ?? ""}
               onChange={(v) => set("maidenName", v)}
             />
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Gender</label>
+              <label style={labelStyle}>{t("add.gender")}</label>
               <select
                 value={form.gender ?? ""}
                 onChange={(e) =>
@@ -159,30 +161,30 @@ const AddPersonForm: React.FC<{
                 style={inputStyle}
               >
                 <option value="">—</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
+                <option value="male">{t("add.genderMale")}</option>
+                <option value="female">{t("add.genderFemale")}</option>
+                <option value="other">{t("add.genderOther")}</option>
               </select>
             </div>
           </div>
 
           <div style={rowStyle}>
             <Field
-              label="Birth date"
+              label={t("add.birthDate")}
               value={form.birthDate ?? ""}
               onChange={(v) => set("birthDate", v)}
-              placeholder="e.g. 1990-07-22 or 1990"
+              placeholder={t("add.birthDatePlaceholder")}
             />
             <Field
-              label="Death date"
+              label={t("add.deathDate")}
               value={form.deathDate ?? ""}
               onChange={(v) => set("deathDate", v)}
-              placeholder="Leave empty if alive"
+              placeholder={t("add.deathDatePlaceholder")}
             />
           </div>
 
           <PlaceAutocomplete
-            label="Birth place"
+            label={t("add.birthPlace")}
             value={form.birthPlace ?? ""}
             onChange={(v) => set("birthPlace", v)}
             onPlaceSelect={(place: PlaceSelection) => {
@@ -196,35 +198,35 @@ const AddPersonForm: React.FC<{
               set("birthCounty", place.county || "");
               set("birthDeptCode", place.deptCode || "");
             }}
-            placeholder="Start typing to search..."
+            placeholder={t("add.searchPlaceholder")}
             inputStyle={inputStyle}
             labelStyle={labelStyle}
           />
 
           <Field
-            label="Birth place display name"
+            label={t("add.birthPlaceDisplay")}
             value={form.birthPlaceDisplay ?? ""}
             onChange={(v) => set("birthPlaceDisplay", v)}
-            placeholder="Old/historical name (optional)"
+            placeholder={t("add.historicalName")}
           />
 
           <div style={rowStyle}>
             <Field
-              label="Birth latitude"
+              label={t("add.birthLat")}
               value={latStr}
               onChange={setLatStr}
-              placeholder="e.g. 48.8566"
+              placeholder={t("add.latPlaceholder")}
             />
             <Field
-              label="Birth longitude"
+              label={t("add.birthLng")}
               value={lngStr}
               onChange={setLngStr}
-              placeholder="e.g. 2.3522"
+              placeholder={t("add.lngPlaceholder")}
             />
           </div>
 
           <PlaceAutocomplete
-            label="Death place"
+            label={t("add.deathPlace")}
             value={form.deathPlace ?? ""}
             onChange={(v) => set("deathPlace", v)}
             onPlaceSelect={(place: PlaceSelection) => {
@@ -238,27 +240,27 @@ const AddPersonForm: React.FC<{
               set("deathCounty", place.county || "");
               set("deathDeptCode", place.deptCode || "");
             }}
-            placeholder="Start typing to search..."
+            placeholder={t("add.searchPlaceholder")}
             inputStyle={inputStyle}
             labelStyle={labelStyle}
           />
 
           <Field
-            label="Death place display name"
+            label={t("add.deathPlaceDisplay")}
             value={form.deathPlaceDisplay ?? ""}
             onChange={(v) => set("deathPlaceDisplay", v)}
-            placeholder="Old/historical name (optional)"
+            placeholder={t("add.historicalName")}
           />
 
           <Field
-            label="Occupation"
+            label={t("add.occupation")}
             value={form.occupation ?? ""}
             onChange={(v) => set("occupation", v)}
           />
 
           {/* Parent selection */}
           <div>
-            <label style={labelStyle}>Parents (select up to 2)</label>
+            <label style={labelStyle}>{t("add.parentsSelect")}</label>
             <select
               multiple
               value={selectedParents}
@@ -281,7 +283,7 @@ const AddPersonForm: React.FC<{
 
           {/* Partner selection */}
           <div>
-            <label style={labelStyle}>Partner(s)</label>
+            <label style={labelStyle}>{t("add.partners")}</label>
             <select
               multiple
               value={selectedPartners}
@@ -303,7 +305,7 @@ const AddPersonForm: React.FC<{
           </div>
 
           <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Notes</label>
+            <label style={labelStyle}>{t("add.notes")}</label>
             <textarea
               value={form.notes ?? ""}
               onChange={(e) => set("notes", e.target.value)}
@@ -312,7 +314,7 @@ const AddPersonForm: React.FC<{
           </div>
 
           <button type="submit" style={submitBtnStyle}>
-            Add Person
+            {t("add.submit")}
           </button>
         </form>
       </div>

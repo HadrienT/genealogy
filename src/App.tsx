@@ -4,12 +4,15 @@ import MapView from "./components/MapView";
 import DetailPanel from "./components/DetailPanel";
 import AddPersonForm from "./components/AddPersonForm";
 import { FamilyProvider, useFamily } from "./hooks/useFamily";
+import { I18nProvider, useI18n } from "./hooks/useI18n";
+import type { Lang } from "./hooks/useI18n";
 
 type ViewMode = "tree" | "map";
 
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>("tree");
   const [showAddForm, setShowAddForm] = useState(false);
+  const { t, lang, setLang } = useI18n();
   const {
     people,
     trees,
@@ -39,20 +42,20 @@ const AppContent: React.FC = () => {
   }, []);
 
   const handleNewTree = async () => {
-    const name = prompt("Name for the new tree:");
+    const name = prompt(t("app.promptNewTree"));
     if (!name?.trim()) return;
     await createTree(name.trim());
     setTreeSelectorOpen(false);
   };
 
   const handleRename = async (id: string, currentName: string) => {
-    const name = prompt("Rename tree:", currentName);
+    const name = prompt(t("app.promptRename"), currentName);
     if (!name?.trim() || name.trim() === currentName) return;
     await renameTree(id, name.trim());
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete tree "${name}"? This cannot be undone.`)) return;
+    if (!confirm(t("app.confirmDelete", { name }))) return;
     await deleteTree(id);
     if (trees.length <= 1) setTreeSelectorOpen(false);
   };
@@ -69,47 +72,47 @@ const AppContent: React.FC = () => {
             <button
               onClick={() => setTreeSelectorOpen((v) => !v)}
               style={treeSelectorBtnStyle}
-              title="Switch family tree"
+              title={t("app.switchTree")}
             >
               <span style={{ fontWeight: 700, fontSize: 16, color: "#1e293b" }}>
-                {currentTreeName || "No tree"}
+                {currentTreeName || t("app.noTree")}
               </span>
               <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: 6 }}>▼</span>
             </button>
 
             {treeSelectorOpen && (
               <div style={dropdownStyle}>
-                <div style={dropdownHeaderStyle}>Family Trees</div>
-                {trees.map((t) => (
+                <div style={dropdownHeaderStyle}>{t("app.familyTrees")}</div>
+                {trees.map((tr) => (
                   <div
-                    key={t.id}
+                    key={tr.id}
                     style={{
                       ...dropdownItemStyle,
-                      background: t.id === currentTreeId ? "#eff6ff" : undefined,
+                      background: tr.id === currentTreeId ? "#eff6ff" : undefined,
                     }}
                   >
                     <button
                       onClick={() => {
-                        switchTree(t.id);
+                        switchTree(tr.id);
                         setTreeSelectorOpen(false);
                       }}
                       style={dropdownItemBtnStyle}
                     >
-                      <span style={{ fontWeight: t.id === currentTreeId ? 600 : 400 }}>
-                        {t.name}
+                      <span style={{ fontWeight: tr.id === currentTreeId ? 600 : 400 }}>
+                        {tr.name}
                       </span>
                       <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                        {t.peopleCount} people
+                        {tr.peopleCount} {t("app.people")}
                       </span>
                     </button>
                     <div style={{ display: "flex", gap: 2 }}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleRename(t.id, t.name);
+                          handleRename(tr.id, tr.name);
                         }}
                         style={dropdownActionBtnStyle}
-                        title="Rename"
+                        title={t("app.rename")}
                       >
                         ✏️
                       </button>
@@ -117,10 +120,10 @@ const AppContent: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDelete(t.id, t.name);
+                            handleDelete(tr.id, tr.name);
                           }}
                           style={dropdownActionBtnStyle}
-                          title="Delete"
+                          title={t("app.delete")}
                         >
                           🗑️
                         </button>
@@ -129,29 +132,30 @@ const AppContent: React.FC = () => {
                   </div>
                 ))}
                 <button onClick={handleNewTree} style={newTreeBtnStyle}>
-                  + New Tree
+                  {t("app.newTree")}
                 </button>
               </div>
             )}
           </div>
 
-          <span style={badgeStyle}>{people.length} people</span>
+          <span style={badgeStyle}>{people.length} {t("app.people")}</span>
         </div>
 
-        <nav style={{ display: "flex", gap: 4 }}>
+        <nav style={{ display: "flex", gap: 4, alignItems: "center" }}>
           <TabButton
             active={view === "tree"}
             onClick={() => setView("tree")}
-            label="🌲 Tree"
+            label={t("app.tree")}
           />
           <TabButton
             active={view === "map"}
             onClick={() => setView("map")}
-            label="🗺️ Map"
+            label={t("app.map")}
           />
           <button onClick={() => setShowAddForm(true)} style={addBtnStyle}>
-            + Add Person
+            {t("app.addPerson")}
           </button>
+          <LangSwitcher lang={lang} setLang={setLang} />
         </nav>
       </header>
 
@@ -159,7 +163,7 @@ const AppContent: React.FC = () => {
       <main style={mainStyle}>
         {loadingTree ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8", fontSize: 14 }}>
-            Loading tree…
+            {t("app.loadingTree")}
           </div>
         ) : (
           <>
@@ -179,12 +183,41 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  <FamilyProvider>
-    <AppContent />
-  </FamilyProvider>
+  <I18nProvider>
+    <FamilyProvider>
+      <AppContent />
+    </FamilyProvider>
+  </I18nProvider>
 );
 
 // ── Sub-components ──────────────────────────────
+const LangSwitcher: React.FC<{ lang: Lang; setLang: (l: Lang) => void }> = ({ lang, setLang }) => (
+  <div style={{ display: "flex", gap: 2, marginLeft: 12 }}>
+    <button
+      onClick={() => setLang("en")}
+      style={{
+        ...flagBtnStyle,
+        opacity: lang === "en" ? 1 : 0.4,
+        transform: lang === "en" ? "scale(1.1)" : "scale(1)",
+      }}
+      title="English"
+    >
+      🇬🇧
+    </button>
+    <button
+      onClick={() => setLang("fr")}
+      style={{
+        ...flagBtnStyle,
+        opacity: lang === "fr" ? 1 : 0.4,
+        transform: lang === "fr" ? "scale(1.1)" : "scale(1)",
+      }}
+      title="Français"
+    >
+      🇫🇷
+    </button>
+  </div>
+);
+
 const TabButton: React.FC<{
   active: boolean;
   onClick: () => void;
@@ -209,6 +242,17 @@ const TabButton: React.FC<{
 );
 
 // ── Styles ──────────────────────────────────────
+const flagBtnStyle: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  fontSize: 20,
+  padding: "2px 4px",
+  borderRadius: 4,
+  transition: "all 0.15s",
+  lineHeight: 1,
+};
+
 const appStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",

@@ -5,16 +5,19 @@
  *   "1990"       → "1990"
  *   "1990-07"    → "July 1990"
  *   "1990-07-22" → "22 July 1990"
+ *
+ * Accepts an optional months array for i18n.
  */
 
-const MONTHS = [
+const MONTHS_EN = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 
-export function formatDate(raw: string | undefined): string {
+export function formatDate(raw: string | undefined, months?: string[]): string {
   if (!raw) return "";
 
+  const monthNames = months ?? MONTHS_EN;
   const parts = raw.split("-");
 
   // Year only: "1990"
@@ -22,7 +25,7 @@ export function formatDate(raw: string | undefined): string {
 
   const year = parts[0];
   const monthIdx = parseInt(parts[1], 10) - 1;
-  const monthName = MONTHS[monthIdx] ?? parts[1];
+  const monthName = monthNames[monthIdx] ?? parts[1];
 
   // Year + month: "1990-07" → "July 1990"
   if (parts.length === 2) return `${monthName} ${year}`;
