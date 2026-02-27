@@ -244,7 +244,6 @@ mf[pid] = {
                 <option value="">—</option>
                 <option value="male">{t("detail.genderMale")}</option>
                 <option value="female">{t("detail.genderFemale")}</option>
-                <option value="other">{t("detail.genderOther")}</option>
               </select>
             </div>
           </div>
@@ -496,7 +495,7 @@ mf[pid] = {
       {/* Info rows */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {p.middleNames && <InfoRow label={t("detail.middleNames")} value={p.middleNames} />}
-        {p.gender && <InfoRow label={t("detail.gender")} value={p.gender === "male" ? t("detail.genderMale") : p.gender === "female" ? t("detail.genderFemale") : t("detail.genderOther")} />}
+        {p.gender && <InfoRow label={t("detail.gender")} value={p.gender === "male" ? t("detail.genderMale") : t("detail.genderFemale")} />}
         {p.birthDate && <InfoRow label={t("detail.born")} value={formatDate(p.birthDate, months)} />}
         {p.birthPlace && <InfoRow label={t("detail.birthPlace")} value={p.birthPlaceDisplay || p.birthPlace} />}
         {p.deathDate && <InfoRow label={t("detail.died")} value={formatDate(p.deathDate, months)} />}

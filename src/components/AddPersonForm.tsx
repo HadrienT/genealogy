@@ -163,7 +163,6 @@ const AddPersonForm: React.FC<{
                 <option value="">—</option>
                 <option value="male">{t("add.genderMale")}</option>
                 <option value="female">{t("add.genderFemale")}</option>
-                <option value="other">{t("add.genderOther")}</option>
               </select>
             </div>
           </div>
