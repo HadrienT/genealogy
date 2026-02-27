@@ -8,6 +8,7 @@ import {
   useEdgesState,
   type NodeMouseHandler,
 } from "@xyflow/react";
+import { useI18n } from "../hooks/useI18n";
 import "@xyflow/react/dist/style.css";
 
 import { useFamily } from "../hooks/useFamily";
@@ -22,6 +23,7 @@ const edgeTypes = { marriageEdge: MarriageEdge };
 
 const TreeView: React.FC = () => {
   const { people, selectPerson, marriages, getPersonById, requestEditPerson } = useFamily();
+  const { t } = useI18n();
 
   // Multi-selection for context menu (up to 2 person nodes)
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -220,7 +222,7 @@ const TreeView: React.FC = () => {
               (e.currentTarget.style.background = "transparent")
             }
           >
-            👶 Add Child
+            {t("tree.addChild")}
           </button>
           {selectedIds.length === 1 && (
             <button
@@ -239,7 +241,7 @@ const TreeView: React.FC = () => {
                 e.currentTarget.style.background = "transparent";
               }}
             >
-              👪 Add Parent{parentCount === 1 ? " (+ partner link)" : parentCount >= 2 ? " (max reached)" : ""}
+              {t("tree.addParent")}{parentCount === 1 ? t("tree.partnerLink") : parentCount >= 2 ? t("tree.maxReached") : ""}
             </button>
           )}
         </div>
@@ -271,26 +273,26 @@ const TreeView: React.FC = () => {
 
       {/* Legend */}
       <div style={legendStyle}>
-        <div style={{ fontWeight: 600, fontSize: 12, color: "#475569", marginBottom: 8 }}>Legend</div>
+        <div style={{ fontWeight: 600, fontSize: 12, color: "#475569", marginBottom: 8 }}>{t("tree.legend")}</div>
         <div style={legendRowStyle}>
           <span style={{ ...legendSwatchStyle, background: "#dbeafe", border: "2px solid #3b82f6" }} />
-          <span style={legendLabelStyle}>Male</span>
+          <span style={legendLabelStyle}>{t("tree.male")}</span>
         </div>
         <div style={legendRowStyle}>
           <span style={{ ...legendSwatchStyle, background: "#fce7f3", border: "2px solid #ec4899" }} />
-          <span style={legendLabelStyle}>Female</span>
+          <span style={legendLabelStyle}>{t("tree.female")}</span>
         </div>
         <div style={{ ...legendRowStyle, marginTop: 4 }}>
           <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#64748b" strokeWidth="2" /></svg>
-          <span style={legendLabelStyle}>Parent → Child</span>
+          <span style={legendLabelStyle}>{t("tree.parentChild")}</span>
         </div>
         <div style={legendRowStyle}>
           <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 4" /></svg>
-          <span style={legendLabelStyle}>Siblings</span>
+          <span style={legendLabelStyle}>{t("tree.siblings")}</span>
         </div>
         <div style={legendRowStyle}>
           <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#e11d48" strokeWidth="2" strokeDasharray="6 3" /></svg>
-          <span style={legendLabelStyle}>Partner / Marriage</span>
+          <span style={legendLabelStyle}>{t("tree.partnerMarriage")}</span>
         </div>
       </div>
     </div>

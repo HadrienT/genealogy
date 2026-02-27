@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import { useFamily } from "../hooks/useFamily";
 import { formatDate } from "../utils/formatDate";
 import type { Person } from "../types/person";
+import { useI18n } from "../hooks/useI18n";
 
 // Fix default marker icons (Leaflet + bundlers issue)
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -107,15 +108,16 @@ const PinPopupEntry: React.FC<{
   showDivider: boolean;
   showType: boolean;
 }> = ({ pin, onClick, showDivider, showType }) => {
+  const { t, months } = useI18n();
   const p = pin.person;
   const color = pin.type === "birth" ? BIRTH_COLOR : DEATH_COLOR;
   const dateStr =
     pin.type === "birth"
       ? p.birthDate
-        ? formatDate(p.birthDate)
+        ? formatDate(p.birthDate, months)
         : undefined
       : p.deathDate
-        ? formatDate(p.deathDate)
+        ? formatDate(p.deathDate, months)
         : undefined;
 
   return (
@@ -146,7 +148,7 @@ const PinPopupEntry: React.FC<{
       </div>
       {dateStr && (
         <div style={{ fontSize: 11, color: "#64748b", marginLeft: showType ? 14 : 0 }}>
-          {pin.type === "birth" ? "Born" : "Died"}: {dateStr}
+          {pin.type === "birth" ? t("map.born") : t("map.died")}: {dateStr}
         </div>
       )}
     </div>
@@ -231,6 +233,7 @@ function extractYear(dateStr?: string): number | null {
 /** Inner component that renders markers based on filters */
 const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: number | null }> = ({ showBirth, showDeath, maxYear }) => {
   const { people, selectPerson } = useFamily();
+  const { t, months } = useI18n();
   const markerRefs = useRef<Record<string, L.Marker>>({});
 
   // Build pins based on current filters
@@ -335,12 +338,12 @@ const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: nu
                     </div>
                     {firstPin.type === "birth" && firstPin.person.birthDate && (
                       <div style={{ fontSize: 12 }}>
-                        Born: {formatDate(firstPin.person.birthDate)}
+                        {t("map.bornLabel")} {formatDate(firstPin.person.birthDate, months)}
                       </div>
                     )}
                     {firstPin.type === "death" && firstPin.person.deathDate && (
                       <div style={{ fontSize: 12 }}>
-                        Died: {formatDate(firstPin.person.deathDate)}
+                        {t("map.diedLabel")} {formatDate(firstPin.person.deathDate, months)}
                       </div>
                     )}
                     {firstPin.type === "birth" && firstPin.person.birthPlace && (
@@ -360,7 +363,7 @@ const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: nu
                         fontWeight: 600,
                       }}
                     >
-                      {cityLabel || "This location"} — {g.pins.length} entries
+                      {cityLabel || t("map.thisLocation")} — {g.pins.length} {t("map.entries")}
                     </div>
                     {g.pins.map((pin, idx) => (
                       <PinPopupEntry
@@ -434,6 +437,7 @@ const timelineBarStyle: React.CSSProperties = {
 
 const MapView: React.FC = () => {
   const { people } = useFamily();
+  const { t } = useI18n();
   const [showBirth, setShowBirth] = useState(true);
   const [showDeath, setShowDeath] = useState(false);
 
@@ -552,13 +556,13 @@ const MapView: React.FC = () => {
           style={toggleBtnStyle(showBirth, BIRTH_COLOR)}
           onClick={() => setShowBirth((v) => !v)}
         >
-          Birth
+          {t("map.birth")}
         </button>
         <button
           style={{ ...toggleBtnStyle(showDeath, DEATH_COLOR), borderRight: "none" }}
           onClick={() => setShowDeath((v) => !v)}
         >
-          Death
+          {t("map.death")}
         </button>
       </div>
 
@@ -581,7 +585,7 @@ const MapView: React.FC = () => {
           {/* Play / Pause */}
           <button
             onClick={togglePlay}
-            title={isPlaying ? "Pause" : "Play"}
+            title={isPlaying ? t("map.pause") : t("map.play")}
             style={{
               background: "none",
               border: "none",
@@ -599,7 +603,7 @@ const MapView: React.FC = () => {
           {/* Reset */}
           <button
             onClick={resetTimeline}
-            title="Reset to end"
+            title={t("map.resetToEnd")}
             style={{
               background: "none",
               border: "none",
@@ -652,7 +656,7 @@ const MapView: React.FC = () => {
           <div style={{ position: "relative" }}>
             <button
               onClick={() => setShowSettings((v) => !v)}
-              title="Animation settings"
+              title={t("map.animSettings")}
               style={{
                 background: "none",
                 border: "none",
@@ -685,11 +689,11 @@ const MapView: React.FC = () => {
                 }}
               >
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: "#1e293b" }}>
-                  Animation Settings
+                  {t("map.animSettingsTitle")}
                 </div>
                 {/* Step size */}
                 <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: "#475569" }}>
-                  <span style={{ minWidth: 70 }}>Step (years)</span>
+                  <span style={{ minWidth: 70 }}>{t("map.stepYears")}</span>
                   <input
                     type="number"
                     min={1}
@@ -708,7 +712,7 @@ const MapView: React.FC = () => {
                 </label>
                 {/* Speed */}
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#475569" }}>
-                  <span style={{ minWidth: 70 }}>Speed (ms)</span>
+                  <span style={{ minWidth: 70 }}>{t("map.speedMs")}</span>
                   <input
                     type="number"
                     min={100}

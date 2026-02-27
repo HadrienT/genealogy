@@ -4,6 +4,7 @@ import type { Person } from "../types/person";
 import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceSelection } from "./PlaceAutocomplete";
 import { formatDate } from "../utils/formatDate";
+import { useI18n } from "../hooks/useI18n";
 
 const DetailPanel: React.FC = () => {
   const {
@@ -19,7 +20,7 @@ const DetailPanel: React.FC = () => {
     editPersonId,
     clearEditPerson,
   } = useFamily();
-
+  const { t, months } = useI18n();
   // Store the id being edited so editing resets automatically when person changes
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Person>>({});
@@ -61,7 +62,7 @@ const DetailPanel: React.FC = () => {
       setSelParents(sp.parentIds ?? []);
       setSelPartners(sp.partnerIds ?? []);
       // Initialize marriage forms for each partner
-      const mf: Record<string, { date: string; place: string }> = {};
+      const mf: typeof marriageForms = {};
       for (const pid of sp.partnerIds ?? []) {
         const m = marriages.find(
           (mar) => mar.partnerIds.includes(sp.id) && mar.partnerIds.includes(pid)
@@ -125,7 +126,7 @@ mf[pid] = {
     setSelParents(p.parentIds ?? []);
     setSelPartners(p.partnerIds ?? []);
     // Initialize marriage forms for each partner
-    const mf: Record<string, { date: string; place: string }> = {};
+    const mf: typeof marriageForms = {};
     for (const pid of p.partnerIds ?? []) {
       const m = marriages.find(
         (mar) => mar.partnerIds.includes(p.id) && mar.partnerIds.includes(pid)
@@ -214,47 +215,47 @@ mf[pid] = {
         <button
           onClick={() => setEditingId(null)}
           style={closeBtnStyle}
-          title="Cancel"
+          title={t("detail.cancel")}
         >
           ✕
         </button>
 
         <h2 style={{ margin: "0 0 16px", fontSize: 18, color: "#1e293b" }}>
-          Edit Person
+          {t("detail.editPerson")}
         </h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={editRowStyle}>
-            <EditField label="First name" value={(form.firstName as string) ?? ""} onChange={(v) => set("firstName", v)} />
-            <EditField label="Last name" value={(form.lastName as string) ?? ""} onChange={(v) => set("lastName", v)} />
+            <EditField label={t("detail.firstName")} value={(form.firstName as string) ?? ""} onChange={(v) => set("firstName", v)} />
+            <EditField label={t("detail.lastName")} value={(form.lastName as string) ?? ""} onChange={(v) => set("lastName", v)} />
           </div>
 
-          <EditField label="Middle names" value={(form.middleNames as string) ?? ""} onChange={(v) => set("middleNames", v)} />
+          <EditField label={t("detail.middleNames")} value={(form.middleNames as string) ?? ""} onChange={(v) => set("middleNames", v)} />
 
           <div style={editRowStyle}>
-            <EditField label="Maiden name" value={(form.maidenName as string) ?? ""} onChange={(v) => set("maidenName", v)} />
+            <EditField label={t("detail.maidenName")} value={(form.maidenName as string) ?? ""} onChange={(v) => set("maidenName", v)} />
             <div style={{ flex: 1 }}>
-              <label style={editLabelStyle}>Gender</label>
+              <label style={editLabelStyle}>{t("detail.gender")}</label>
               <select
                 value={(form.gender as string) ?? ""}
                 onChange={(e) => set("gender", e.target.value || undefined)}
                 style={editInputStyle}
               >
                 <option value="">—</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
+                <option value="male">{t("detail.genderMale")}</option>
+                <option value="female">{t("detail.genderFemale")}</option>
+                <option value="other">{t("detail.genderOther")}</option>
               </select>
             </div>
           </div>
 
           <div style={editRowStyle}>
-            <EditField label="Birth date" value={(form.birthDate as string) ?? ""} onChange={(v) => set("birthDate", v)} placeholder="e.g. 1990-07-22" />
-            <EditField label="Death date" value={(form.deathDate as string) ?? ""} onChange={(v) => set("deathDate", v)} placeholder="Leave empty if alive" />
+            <EditField label={t("detail.birthDate")} value={(form.birthDate as string) ?? ""} onChange={(v) => set("birthDate", v)} placeholder={t("detail.birthDatePlaceholder")} />
+            <EditField label={t("detail.deathDate")} value={(form.deathDate as string) ?? ""} onChange={(v) => set("deathDate", v)} placeholder={t("detail.deathDatePlaceholder")} />
           </div>
 
           <PlaceAutocomplete
-            label="Birth place"
+            label={t("detail.birthPlace")}
             value={(form.birthPlace as string) ?? ""}
             onChange={(v) => set("birthPlace", v)}
             onPlaceSelect={(place: PlaceSelection) => {
@@ -268,20 +269,20 @@ mf[pid] = {
               set("birthCounty", place.county || "");
               set("birthDeptCode", place.deptCode || "");
             }}
-            placeholder="Start typing to search..."
+            placeholder={t("detail.searchPlaceholder")}
             inputStyle={editInputStyle}
             labelStyle={editLabelStyle}
           />
 
           <div style={editRowStyle}>
-            <EditField label="Birth lat." value={latStr} onChange={setLatStr} placeholder="e.g. 48.8566" />
-            <EditField label="Birth lng." value={lngStr} onChange={setLngStr} placeholder="e.g. 2.3522" />
+            <EditField label={t("detail.birthLat")} value={latStr} onChange={setLatStr} placeholder={t("detail.latPlaceholder")} />
+            <EditField label={t("detail.birthLng")} value={lngStr} onChange={setLngStr} placeholder={t("detail.lngPlaceholder")} />
           </div>
 
-          <EditField label="Birth place display name" value={(form.birthPlaceDisplay as string) ?? ""} onChange={(v) => set("birthPlaceDisplay", v)} placeholder="Old/historical name (optional)" />
+          <EditField label={t("detail.birthPlaceDisplay")} value={(form.birthPlaceDisplay as string) ?? ""} onChange={(v) => set("birthPlaceDisplay", v)} placeholder={t("detail.historicalName")} />
 
           <PlaceAutocomplete
-            label="Death place"
+            label={t("detail.deathPlace")}
             value={(form.deathPlace as string) ?? ""}
             onChange={(v) => set("deathPlace", v)}
             onPlaceSelect={(place: PlaceSelection) => {
@@ -295,18 +296,18 @@ mf[pid] = {
               set("deathCounty", place.county || "");
               set("deathDeptCode", place.deptCode || "");
             }}
-            placeholder="Start typing to search..."
+            placeholder={t("detail.searchPlaceholder")}
             inputStyle={editInputStyle}
             labelStyle={editLabelStyle}
           />
 
-          <EditField label="Death place display name" value={(form.deathPlaceDisplay as string) ?? ""} onChange={(v) => set("deathPlaceDisplay", v)} placeholder="Old/historical name (optional)" />
+          <EditField label={t("detail.deathPlaceDisplay")} value={(form.deathPlaceDisplay as string) ?? ""} onChange={(v) => set("deathPlaceDisplay", v)} placeholder={t("detail.historicalName")} />
 
-          <EditField label="Occupation" value={(form.occupation as string) ?? ""} onChange={(v) => set("occupation", v)} />
+          <EditField label={t("detail.occupation")} value={(form.occupation as string) ?? ""} onChange={(v) => set("occupation", v)} />
 
           {/* Parent selection */}
           <div>
-            <label style={editLabelStyle}>Parents (up to 2)</label>
+            <label style={editLabelStyle}>{t("detail.parentsUpTo2")}</label>
             <select
               multiple
               value={selParents}
@@ -326,7 +327,7 @@ mf[pid] = {
 
           {/* Partner selection */}
           <div>
-            <label style={editLabelStyle}>Partner(s)</label>
+            <label style={editLabelStyle}>{t("detail.partners")}</label>
             <select
               multiple
               value={selPartners}
@@ -364,7 +365,7 @@ mf[pid] = {
           {/* Marriage details per partner */}
           {selPartners.length > 0 && (
             <div>
-              <label style={editLabelStyle}>Marriage details</label>
+              <label style={editLabelStyle}>{t("detail.marriageDetails")}</label>
               {selPartners.map((pid) => {
                 const partner = getPersonById(pid);
                 const mf = marriageForms[pid] ?? {
@@ -384,10 +385,10 @@ mf[pid] = {
                     }}
                   >
                     <div style={{ fontSize: 12, fontWeight: 600, color: "#9f1239", marginBottom: 6 }}>
-                      💍 with {partner ? formatName(partner) : pid}
+                      {t("detail.marriageWith", { name: partner ? formatName(partner) : pid })}
                     </div>
                     <EditField
-                      label="Marriage date"
+                      label={t("detail.marriageDate")}
                       value={mf.date}
                       onChange={(v) =>
                         setMarriageForms((prev) => ({
@@ -395,11 +396,11 @@ mf[pid] = {
                           [pid]: { ...prev[pid], date: v },
                         }))
                       }
-                      placeholder="e.g. 1990-07-22"
+                      placeholder={t("detail.birthDatePlaceholder")}
                     />
                     <div style={{ marginTop: 6 }}>
                       <PlaceAutocomplete
-                        label="Marriage place"
+                        label={t("detail.marriagePlace")}
                         value={mf.place}
                         onChange={(v) =>
                           setMarriageForms((prev) => ({
@@ -422,14 +423,14 @@ mf[pid] = {
                             },
                           }));
                         }}
-                        placeholder="Start typing to search..."
+                        placeholder={t("detail.searchPlaceholder")}
                         inputStyle={editInputStyle}
                         labelStyle={editLabelStyle}
                       />
                     </div>
                     <div style={{ marginTop: 4 }}>
                       <EditField
-                        label="Place display name"
+                        label={t("detail.placeDisplayName")}
                         value={mf.placeDisplay}
                         onChange={(v) =>
                           setMarriageForms((prev) => ({
@@ -437,7 +438,7 @@ mf[pid] = {
                             [pid]: { ...prev[pid], placeDisplay: v },
                           }))
                         }
-                        placeholder="Old/historical name (optional)"
+                        placeholder={t("detail.historicalName")}
                       />
                     </div>
                   </div>
@@ -447,7 +448,7 @@ mf[pid] = {
           )}
 
           <div>
-            <label style={editLabelStyle}>Notes</label>
+            <label style={editLabelStyle}>{t("detail.notes")}</label>
             <textarea
               value={(form.notes as string) ?? ""}
               onChange={(e) => set("notes", e.target.value)}
@@ -457,10 +458,10 @@ mf[pid] = {
 
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button onClick={handleSave} style={saveBtnStyle}>
-              Save
+              {t("detail.save")}
             </button>
             <button onClick={() => setEditingId(null)} style={cancelBtnStyle}>
-              Cancel
+              {t("detail.cancel")}
             </button>
           </div>
         </div>
@@ -475,7 +476,7 @@ mf[pid] = {
       <button
         onClick={() => selectPerson(null)}
         style={closeBtnStyle}
-        title="Close"
+        title={t("detail.close")}
       >
         ✕
       </button>
@@ -487,31 +488,31 @@ mf[pid] = {
         </h2>
         {p.maidenName && (
           <div style={{ fontSize: 13, color: "#64748b" }}>
-            née {p.maidenName}
+            {t("detail.nee")} {p.maidenName}
           </div>
         )}
       </div>
 
       {/* Info rows */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {p.middleNames && <InfoRow label="Middle names" value={p.middleNames} />}
-        {p.gender && <InfoRow label="Gender" value={p.gender} />}
-        {p.birthDate && <InfoRow label="Born" value={formatDate(p.birthDate)} />}
-        {p.birthPlace && <InfoRow label="Birth place" value={p.birthPlaceDisplay || p.birthPlace} />}
-        {p.deathDate && <InfoRow label="Died" value={formatDate(p.deathDate)} />}
-        {p.deathPlace && <InfoRow label="Death place" value={p.deathPlaceDisplay || p.deathPlace} />}
-        {p.occupation && <InfoRow label="Occupation" value={p.occupation} />}
+        {p.middleNames && <InfoRow label={t("detail.middleNames")} value={p.middleNames} />}
+        {p.gender && <InfoRow label={t("detail.gender")} value={p.gender === "male" ? t("detail.genderMale") : p.gender === "female" ? t("detail.genderFemale") : t("detail.genderOther")} />}
+        {p.birthDate && <InfoRow label={t("detail.born")} value={formatDate(p.birthDate, months)} />}
+        {p.birthPlace && <InfoRow label={t("detail.birthPlace")} value={p.birthPlaceDisplay || p.birthPlace} />}
+        {p.deathDate && <InfoRow label={t("detail.died")} value={formatDate(p.deathDate, months)} />}
+        {p.deathPlace && <InfoRow label={t("detail.deathPlace")} value={p.deathPlaceDisplay || p.deathPlace} />}
+        {p.occupation && <InfoRow label={t("detail.occupation")} value={p.occupation} />}
 
         {parents.length > 0 && (
           <RelationRow
-            label="Parents"
+            label={t("detail.parents")}
             people={parents}
             onSelect={handleRelationClick}
           />
         )}
         {partners.length > 0 && (
           <div>
-            <span style={labelStyle}>Partners: </span>
+            <span style={labelStyle}>{t("detail.partnersLabel")} </span>
             {partners.map((partner, i) => {
               const m = marriages.find(
                 (mar) =>
@@ -541,7 +542,7 @@ mf[pid] = {
                     }
                     return (
                       <span style={{ fontSize: 12, color: "#9f1239", marginLeft: 6 }}>
-                        💍 {m?.date ? formatDate(m.date) : ""}{m?.date && placeLabel ? " · " : ""}{placeLabel ?? ""}
+                        💍 {m?.date ? formatDate(m.date, months) : ""}{m?.date && placeLabel ? " · " : ""}{placeLabel ?? ""}
                       </span>
                     );
                   })()}
@@ -552,7 +553,7 @@ mf[pid] = {
         )}
         {children.length > 0 && (
           <RelationRow
-            label="Children"
+            label={t("detail.children")}
             people={children}
             onSelect={handleRelationClick}
           />
@@ -560,7 +561,7 @@ mf[pid] = {
 
         {p.notes && (
           <div style={{ marginTop: 8 }}>
-            <div style={labelStyle}>Notes</div>
+            <div style={labelStyle}>{t("detail.notes")}</div>
             <div
               style={{
                 fontSize: 13,
@@ -577,17 +578,17 @@ mf[pid] = {
       {/* Actions */}
       <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
         <button onClick={startEditing} style={editBtnStyle}>
-          Edit
+          {t("detail.edit")}
         </button>
         <button
           onClick={() => {
-            if (confirm(`Remove ${formatName(p)} from the tree?`)) {
+            if (confirm(t("detail.confirmRemove", { name: formatName(p) }))) {
               removePerson(p.id);
             }
           }}
           style={deleteBtnStyle}
         >
-          Remove
+          {t("detail.remove")}
         </button>
       </div>
     </div>

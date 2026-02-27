@@ -6,6 +6,7 @@ import {
   type EdgeProps,
 } from "@xyflow/react";
 import { formatDate } from "../utils/formatDate";
+import { useI18n } from "../hooks/useI18n";
 
 /**
  * Derive the French department number from a postcode.
@@ -60,6 +61,7 @@ const MarriageEdge: React.FC<EdgeProps> = ({
   style,
   data,
 }) => {
+  const { months } = useI18n();
   const [edgePath, labelX, labelY] = getStraightPath({
     sourceX,
     sourceY,
@@ -95,7 +97,7 @@ const MarriageEdge: React.FC<EdgeProps> = ({
             }}
             className="nodrag nopan"
           >
-            {marriageDate && <div>💍 {formatDate(marriageDate)}</div>}
+            {marriageDate && <div>💍 {formatDate(marriageDate, months)}</div>}
             {marriagePlace && (
               <div style={{ color: "#be123c" }}>{marriagePlace}</div>
             )}
