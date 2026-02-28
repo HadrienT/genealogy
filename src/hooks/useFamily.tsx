@@ -50,6 +50,15 @@ const FamilyContext = createContext<FamilyContextType | null>(null);
 const LAST_TREE_KEY = "genealogy-last-tree-id";
 
 /**
+ * API base URL.
+ * - In dev: empty string → Vite proxy forwards /api to localhost:3001
+ * - In prod: set VITE_API_URL to Cloud Run service URL
+ */
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
+// ─── Reverse geocoding helpers ───────────────────────────────────────────────
+
+/**
  * Reverse-geocode a single coordinate pair via Nominatim.
  * Returns structured address fields or null on failure.
  */
@@ -150,8 +159,7 @@ async function backfillAddressFields(
     return u ? { ...p, ...u } : p;
   });
 
-  // Persist to server and update UI state
-  // We dispatch a custom event so the provider can pick up the change
+  // Persist to API and update UI state
   persistTree(treeId, treeName, updatedPeople, marriages);
 
   // Dispatch event so provider updates its state
@@ -163,7 +171,7 @@ async function backfillAddressFields(
 /** Save tree data to the API */
 async function persistTree(treeId: string, name: string, people: Person[], marriages: Marriage[]) {
   try {
-    await fetch(`/api/trees/${treeId}`, {
+    await fetch(`${API_BASE}/api/trees/${treeId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, people, marriages }),
@@ -206,10 +214,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => window.removeEventListener("backfill-complete", handler);
   }, []);
 
-  /** Fetch the list of trees from the server */
+  /** Fetch the list of trees from the API */
   const refreshTreeList = useCallback(async () => {
     try {
-      const res = await fetch("/api/trees");
+      const res = await fetch(`${API_BASE}/api/trees`);
       const list: TreeMeta[] = await res.json();
       setTrees(list);
       return list;
@@ -218,11 +226,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  /** Load a specific tree's data */
+  /** Load a specific tree's data from the API */
   const loadTree = useCallback(async (id: string) => {
     setLoadingTree(true);
     try {
-      const res = await fetch(`/api/trees/${id}`);
+      const res = await fetch(`${API_BASE}/api/trees/${id}`);
       if (!res.ok) throw new Error("Tree not found");
       const data = await res.json();
       const loadedPeople: Person[] = data.people || [];
@@ -265,7 +273,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const createTree = useCallback(
     async (name: string): Promise<string> => {
-      const res = await fetch("/api/trees", {
+      const res = await fetch(`${API_BASE}/api/trees`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -280,7 +288,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const deleteTree = useCallback(
     async (id: string) => {
-      await fetch(`/api/trees/${id}`, { method: "DELETE" });
+      await fetch(`${API_BASE}/api/trees/${id}`, { method: "DELETE" });
       const list = await refreshTreeList();
       if (id === currentTreeIdRef.current) {
         if (list.length > 0) {
@@ -298,7 +306,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const renameTree = useCallback(
     async (id: string, name: string) => {
-      await fetch(`/api/trees/${id}`, {
+      await fetch(`${API_BASE}/api/trees/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
