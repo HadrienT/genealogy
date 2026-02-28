@@ -152,6 +152,17 @@ const translations = {
   "app.roleViewer": { en: "Viewer", fr: "Lecteur" },
   "app.roleEditor": { en: "Editor", fr: "Éditeur" },
 
+  // Documents
+  "docs.title": { en: "Documents", fr: "Documents" },
+  "docs.upload": { en: "📎 Upload", fr: "📎 Importer" },
+  "docs.uploading": { en: "Uploading…", fr: "Import…" },
+  "docs.loading": { en: "Loading…", fr: "Chargement…" },
+  "docs.empty": { en: "No documents yet", fr: "Aucun document" },
+  "docs.download": { en: "Download", fr: "Télécharger" },
+  "docs.delete": { en: "Delete", fr: "Supprimer" },
+  "docs.confirmDelete": { en: "Delete this document?", fr: "Supprimer ce document ?" },
+  "docs.noPreview": { en: "Preview not available", fr: "Aperçu non disponible" },
+
   // useFamily fallback
   "family.untitled": { en: "Untitled", fr: "Sans titre" },
 } as const;

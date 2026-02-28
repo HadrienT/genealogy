@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import type { Person } from "../types/person";
 import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceSelection } from "./PlaceAutocomplete";
+import DocumentGallery from "./DocumentGallery";
 import { formatDate } from "../utils/formatDate";
 import { useI18n } from "../hooks/useI18n";
 
@@ -575,6 +576,9 @@ mf[pid] = {
           </div>
         )}
       </div>
+
+      {/* Documents */}
+      <DocumentGallery personId={p.id} />
 
       {/* Actions */}
       {isEditor && (
