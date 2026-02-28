@@ -9,6 +9,7 @@ import {
   type NodeMouseHandler,
 } from "@xyflow/react";
 import { useI18n } from "../hooks/useI18n";
+import { useAuth } from "../hooks/useAuth";
 import "@xyflow/react/dist/style.css";
 
 import { useFamily } from "../hooks/useFamily";
@@ -24,6 +25,7 @@ const edgeTypes = { marriageEdge: MarriageEdge };
 const TreeView: React.FC = () => {
   const { people, selectPerson, marriages, getPersonById, requestEditPerson } = useFamily();
   const { t } = useI18n();
+  const { isEditor } = useAuth();
 
   // Multi-selection for context menu (up to 2 person nodes)
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -98,14 +100,15 @@ const TreeView: React.FC = () => {
     (_event, node) => {
       if (node.type !== "personNode") return;
       selectPerson(node.id);
-      requestEditPerson(node.id);
+      if (isEditor) requestEditPerson(node.id);
     },
-    [selectPerson, requestEditPerson]
+    [selectPerson, requestEditPerson, isEditor]
   );
 
   const onNodeContextMenu: NodeMouseHandler = useCallback(
     (event, node) => {
       if (node.type !== "personNode") return;
+      if (!isEditor) return;
       event.preventDefault();
 
       // If right-clicked node isn't in selection, select it

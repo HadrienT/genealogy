@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useFamily } from "../hooks/useFamily";
+import { useAuth } from "../hooks/useAuth";
 import type { Person } from "../types/person";
 import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceSelection } from "./PlaceAutocomplete";
@@ -21,6 +22,7 @@ const DetailPanel: React.FC = () => {
     clearEditPerson,
   } = useFamily();
   const { t, months } = useI18n();
+  const { isEditor } = useAuth();
   // Store the id being edited so editing resets automatically when person changes
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Person>>({});
@@ -575,6 +577,7 @@ mf[pid] = {
       </div>
 
       {/* Actions */}
+      {isEditor && (
       <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
         <button onClick={startEditing} style={editBtnStyle}>
           {t("detail.edit")}
@@ -590,6 +593,7 @@ mf[pid] = {
           {t("detail.remove")}
         </button>
       </div>
+      )}
     </div>
   );
 };
