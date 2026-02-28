@@ -4,15 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node server.js & vite",
-    "server": "node server.js",
+    "dev": "vite",
+    "dev:api": "cd api && node server.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@xyflow/react": "^12.10.1",
-    "express": "^5.2.1",
     "leaflet": "^1.9.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
