@@ -4,6 +4,9 @@ import { Storage } from "@google-cloud/storage";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -285,6 +288,121 @@ app.patch("/api/trees/:id", authenticate, requireRole("editor"), async (req, res
     if (req.body.name) data.name = req.body.name;
     await writeTree(req.params.id, data);
     res.json({ ok: true, name: data.name });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Document Routes ─────────────────────────────────────────────────────────
+
+const DOCS_PREFIX = "docs";
+
+/** Read document metadata for a person */
+async function readDocMeta(personId) {
+  const file = bucket.file(`${DOCS_PREFIX}/${personId}/_meta.json`);
+  const [exists] = await file.exists();
+  if (!exists) return [];
+  const [content] = await file.download();
+  return JSON.parse(content.toString("utf-8"));
+}
+
+/** Write document metadata for a person */
+async function writeDocMeta(personId, meta) {
+  const file = bucket.file(`${DOCS_PREFIX}/${personId}/_meta.json`);
+  await file.save(JSON.stringify(meta, null, 2), { contentType: "application/json" });
+}
+
+/** List documents for a person */
+app.get("/api/persons/:personId/documents", authenticate, async (req, res) => {
+  try {
+    const meta = await readDocMeta(req.params.personId);
+    res.json(meta);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/** Upload a document for a person (editor only) */
+app.post("/api/persons/:personId/documents", authenticate, requireRole("editor"), upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file provided" });
+    const { personId } = req.params;
+    const docId = uuidv4();
+    const ext = req.file.originalname.includes(".") ? req.file.originalname.split(".").pop() : "";
+    const gcsPath = `${DOCS_PREFIX}/${personId}/${docId}${ext ? "." + ext : ""}`;
+
+    const gcsFile = bucket.file(gcsPath);
+    await gcsFile.save(req.file.buffer, {
+      contentType: req.file.mimetype,
+      metadata: { originalName: req.file.originalname },
+    });
+
+    const doc = {
+      id: docId,
+      name: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      gcsPath,
+      uploadedAt: new Date().toISOString(),
+    };
+
+    const meta = await readDocMeta(personId);
+    meta.push(doc);
+    await writeDocMeta(personId, meta);
+
+    res.status(201).json(doc);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/** View/download a document (streams from GCS) */
+app.get("/api/persons/:personId/documents/:docId", authenticate, async (req, res) => {
+  try {
+    const meta = await readDocMeta(req.params.personId);
+    const doc = meta.find((d) => d.id === req.params.docId);
+    if (!doc) return res.status(404).json({ error: "Document not found" });
+
+    const gcsFile = bucket.file(doc.gcsPath);
+    const [exists] = await gcsFile.exists();
+    if (!exists) return res.status(404).json({ error: "File not found in storage" });
+
+    // Viewers: always inline (no download). Editors: inline by default, download if ?download=1
+    const isEditor = req.user?.role === "editor";
+    const wantsDownload = req.query.download === "1" && isEditor;
+    const disposition = wantsDownload
+      ? `attachment; filename="${doc.name}"`
+      : `inline; filename="${doc.name}"`;
+
+    res.setHeader("Content-Type", doc.mimeType);
+    res.setHeader("Content-Disposition", disposition);
+    res.setHeader("Content-Length", doc.size);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+
+    gcsFile.createReadStream().pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/** Delete a document (editor only) */
+app.delete("/api/persons/:personId/documents/:docId", authenticate, requireRole("editor"), async (req, res) => {
+  try {
+    const { personId, docId } = req.params;
+    const meta = await readDocMeta(personId);
+    const doc = meta.find((d) => d.id === docId);
+    if (!doc) return res.status(404).json({ error: "Document not found" });
+
+    // Delete file from GCS
+    const gcsFile = bucket.file(doc.gcsPath);
+    const [exists] = await gcsFile.exists();
+    if (exists) await gcsFile.delete();
+
+    // Update metadata
+    const updated = meta.filter((d) => d.id !== docId);
+    await writeDocMeta(personId, updated);
+
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
