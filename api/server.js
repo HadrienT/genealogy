@@ -2,11 +2,15 @@ import express from "express";
 import cors from "cors";
 import { Storage } from "@google-cloud/storage";
 import { v4 as uuidv4 } from "uuid";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const BUCKET_NAME = process.env.GCS_BUCKET || "genealogy-trees-data";
 const PORT = parseInt(process.env.PORT || "3001", 10);
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const USERS_FILE = "_users.json";
 
 // In Cloud Run, Application Default Credentials are auto-provided.
 // Locally, set GOOGLE_APPLICATION_CREDENTIALS env var or use `gcloud auth application-default login`.
@@ -23,9 +27,85 @@ app.use(
       /^http:\/\/127\.0\.0\.1(:\d+)?$/,
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// ─── Auth Helpers ────────────────────────────────────────────────────────────
+
+/** Read users list from GCS */
+async function readUsers() {
+  const file = bucket.file(USERS_FILE);
+  const [exists] = await file.exists();
+  if (!exists) return [];
+  const [content] = await file.download();
+  return JSON.parse(content.toString("utf-8"));
+}
+
+/** Write users list to GCS */
+async function writeUsers(users) {
+  const file = bucket.file(USERS_FILE);
+  await file.save(JSON.stringify(users, null, 2), {
+    contentType: "application/json",
+  });
+}
+
+/**
+ * Seed users from SEED_USERS env var if no users exist yet.
+ * Format: JSON array of { username, password, role } objects.
+ * Example: [{"username":"admin","password":"s3cret","role":"editor"}]
+ */
+async function seedUsers() {
+  try {
+    const users = await readUsers();
+    if (users.length > 0) return;
+
+    const seedJson = process.env.SEED_USERS;
+    if (!seedJson) {
+      console.warn("No SEED_USERS env var set – skipping user seed.");
+      return;
+    }
+
+    const seeds = JSON.parse(seedJson);
+    const newUsers = [];
+    for (const s of seeds) {
+      if (!s.username || !s.password || !s.role) continue;
+      const hash = await bcrypt.hash(s.password, 10);
+      newUsers.push({ id: uuidv4(), username: s.username, passwordHash: hash, role: s.role });
+    }
+    if (newUsers.length > 0) {
+      await writeUsers(newUsers);
+      console.log(`Seeded ${newUsers.length} user(s) from SEED_USERS env var.`);
+    }
+  } catch (err) {
+    console.warn("User seed failed:", err.message);
+  }
+}
+
+/** Auth middleware: validates JWT, sets req.user = { id, username, role } */
+function authenticate(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing or invalid token" });
+  }
+  try {
+    const payload = jwt.verify(header.slice(7), JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+/** Role middleware: require specific role */
+function requireRole(role) {
+  return (req, res, next) => {
+    if (req.user?.role !== role) {
+      return res.status(403).json({ error: "Insufficient permissions" });
+    }
+    next();
+  };
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -106,8 +186,36 @@ async function seedIfEmpty() {
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
-/** List all trees (metadata only) */
-app.get("/api/trees", async (_req, res) => {
+/** Login */
+app.post("/api/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password required" });
+    }
+    const users = await readUsers();
+    const user = users.find((u) => u.username === username);
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/** Verify token & return user info */
+app.get("/api/me", authenticate, (req, res) => {
+  res.json({ user: req.user });
+});
+
+/** List all trees (metadata only) — requires authentication */
+app.get("/api/trees", authenticate, async (_req, res) => {
   try {
     const trees = await listAllTrees();
     res.json(
@@ -123,7 +231,7 @@ app.get("/api/trees", async (_req, res) => {
 });
 
 /** Get a single tree */
-app.get("/api/trees/:id", async (req, res) => {
+app.get("/api/trees/:id", authenticate, async (req, res) => {
   try {
     const tree = await readTree(req.params.id);
     if (!tree) return res.status(404).json({ error: "Tree not found" });
@@ -134,7 +242,7 @@ app.get("/api/trees/:id", async (req, res) => {
 });
 
 /** Update a tree (full overwrite) */
-app.put("/api/trees/:id", async (req, res) => {
+app.put("/api/trees/:id", authenticate, requireRole("editor"), async (req, res) => {
   try {
     const existing = await readTree(req.params.id);
     if (!existing) return res.status(404).json({ error: "Tree not found" });
@@ -147,7 +255,7 @@ app.put("/api/trees/:id", async (req, res) => {
 });
 
 /** Create a new tree */
-app.post("/api/trees", async (req, res) => {
+app.post("/api/trees", authenticate, requireRole("editor"), async (req, res) => {
   try {
     const id = uuidv4();
     const name = req.body.name || "Untitled";
@@ -160,7 +268,7 @@ app.post("/api/trees", async (req, res) => {
 });
 
 /** Delete a tree */
-app.delete("/api/trees/:id", async (req, res) => {
+app.delete("/api/trees/:id", authenticate, requireRole("editor"), async (req, res) => {
   try {
     await deleteTreeFile(req.params.id);
     res.json({ ok: true });
@@ -170,7 +278,7 @@ app.delete("/api/trees/:id", async (req, res) => {
 });
 
 /** Rename a tree */
-app.patch("/api/trees/:id", async (req, res) => {
+app.patch("/api/trees/:id", authenticate, requireRole("editor"), async (req, res) => {
   try {
     const data = await readTree(req.params.id);
     if (!data) return res.status(404).json({ error: "Tree not found" });
@@ -184,7 +292,7 @@ app.patch("/api/trees/:id", async (req, res) => {
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 
-seedIfEmpty().then(() => {
+Promise.all([seedIfEmpty(), seedUsers()]).then(() => {
   app.listen(PORT, () => {
     console.log(`Genealogy API → http://localhost:${PORT}`);
     console.log(`  GCS bucket:  ${BUCKET_NAME}`);

@@ -56,6 +56,12 @@ const LAST_TREE_KEY = "genealogy-last-tree-id";
  */
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
+/** Build Authorization headers from the stored JWT token */
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem("genealogy-auth-token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // ─── Reverse geocoding helpers ───────────────────────────────────────────────
 
 /**
@@ -173,7 +179,7 @@ async function persistTree(treeId: string, name: string, people: Person[], marri
   try {
     await fetch(`${API_BASE}/api/trees/${treeId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ name, people, marriages }),
     });
   } catch (err) {
@@ -217,7 +223,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
   /** Fetch the list of trees from the API */
   const refreshTreeList = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/trees`);
+      const res = await fetch(`${API_BASE}/api/trees`, {
+        headers: { ...authHeaders() },
+      });
       const list: TreeMeta[] = await res.json();
       setTrees(list);
       return list;
@@ -230,7 +238,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
   const loadTree = useCallback(async (id: string) => {
     setLoadingTree(true);
     try {
-      const res = await fetch(`${API_BASE}/api/trees/${id}`);
+      const res = await fetch(`${API_BASE}/api/trees/${id}`, {
+        headers: { ...authHeaders() },
+      });
       if (!res.ok) throw new Error("Tree not found");
       const data = await res.json();
       const loadedPeople: Person[] = data.people || [];
@@ -275,7 +285,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
     async (name: string): Promise<string> => {
       const res = await fetch(`${API_BASE}/api/trees`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ name }),
       });
       const tree = await res.json();
@@ -288,7 +298,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const deleteTree = useCallback(
     async (id: string) => {
-      await fetch(`${API_BASE}/api/trees/${id}`, { method: "DELETE" });
+      await fetch(`${API_BASE}/api/trees/${id}`, {
+        method: "DELETE",
+        headers: { ...authHeaders() },
+      });
       const list = await refreshTreeList();
       if (id === currentTreeIdRef.current) {
         if (list.length > 0) {
@@ -308,7 +321,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
     async (id: string, name: string) => {
       await fetch(`${API_BASE}/api/trees/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ name }),
       });
       if (id === currentTreeIdRef.current) {

@@ -3,7 +3,9 @@ import TreeView from "./components/TreeView";
 import MapView from "./components/MapView";
 import DetailPanel from "./components/DetailPanel";
 import AddPersonForm from "./components/AddPersonForm";
+import LoginPage from "./components/LoginPage";
 import { FamilyProvider, useFamily } from "./hooks/useFamily";
+import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { I18nProvider, useI18n } from "./hooks/useI18n";
 import type { Lang } from "./hooks/useI18n";
 
@@ -13,6 +15,7 @@ const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>("tree");
   const [showAddForm, setShowAddForm] = useState(false);
   const { t, lang, setLang } = useI18n();
+  const { user, isEditor, logout } = useAuth();
   const {
     people,
     trees,
@@ -105,6 +108,7 @@ const AppContent: React.FC = () => {
                         {tr.peopleCount} {t("app.people")}
                       </span>
                     </button>
+                    {isEditor && (
                     <div style={{ display: "flex", gap: 2 }}>
                       <button
                         onClick={(e) => {
@@ -129,11 +133,14 @@ const AppContent: React.FC = () => {
                         </button>
                       )}
                     </div>
+                    )}
                   </div>
                 ))}
+                {isEditor && (
                 <button onClick={handleNewTree} style={newTreeBtnStyle}>
                   {t("app.newTree")}
                 </button>
+                )}
               </div>
             )}
           </div>
@@ -152,10 +159,22 @@ const AppContent: React.FC = () => {
             onClick={() => setView("map")}
             label={t("app.map")}
           />
-          <button onClick={() => setShowAddForm(true)} style={addBtnStyle}>
-            {t("app.addPerson")}
-          </button>
+          {isEditor && (
+            <button onClick={() => setShowAddForm(true)} style={addBtnStyle}>
+              {t("app.addPerson")}
+            </button>
+          )}
           <LangSwitcher lang={lang} setLang={setLang} />
+          {user && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+              <span style={roleBadgeStyle(isEditor)}>
+                {isEditor ? t("app.roleEditor") : t("app.roleViewer")}
+              </span>
+              <button onClick={logout} style={logoutBtnStyle} title={t("app.logout")}>
+                {t("app.logout")}
+              </button>
+            </div>
+          )}
         </nav>
       </header>
 
@@ -182,11 +201,28 @@ const AppContent: React.FC = () => {
   );
 };
 
-const App: React.FC = () => (
-  <I18nProvider>
+const AuthGate: React.FC = () => {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", color: "#94a3b8", fontFamily: "'Inter', system-ui, sans-serif" }}>
+        …
+      </div>
+    );
+  }
+  if (!user) return <LoginPage />;
+  return (
     <FamilyProvider>
       <AppContent />
     </FamilyProvider>
+  );
+};
+
+const App: React.FC = () => (
+  <I18nProvider>
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   </I18nProvider>
 );
 
@@ -374,5 +410,27 @@ const newTreeBtnStyle: React.CSSProperties = {
   color: "#3b82f6",
   textAlign: "left",
 };
+
+const logoutBtnStyle: React.CSSProperties = {
+  padding: "4px 10px",
+  background: "none",
+  border: "1px solid #e2e8f0",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: 500,
+};
+
+const roleBadgeStyle = (isEditor: boolean): React.CSSProperties => ({
+  fontSize: 10,
+  fontWeight: 600,
+  padding: "2px 8px",
+  borderRadius: 10,
+  background: isEditor ? "#dbeafe" : "#f1f5f9",
+  color: isEditor ? "#2563eb" : "#64748b",
+  textTransform: "uppercase",
+  letterSpacing: "0.03em",
+});
 
 export default App;

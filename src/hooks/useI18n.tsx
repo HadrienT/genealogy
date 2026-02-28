@@ -138,6 +138,20 @@ const translations = {
   "add.notes": { en: "Notes", fr: "Notes" },
   "add.submit": { en: "Add Person", fr: "Ajouter la personne" },
 
+  // Login
+  "login.title": { en: "Genealogy", fr: "Généalogie" },
+  "login.subtitle": { en: "Sign in to continue", fr: "Connectez-vous pour continuer" },
+  "login.username": { en: "Username", fr: "Nom d'utilisateur" },
+  "login.password": { en: "Password", fr: "Mot de passe" },
+  "login.submit": { en: "Sign in", fr: "Se connecter" },
+  "login.loggingIn": { en: "Signing in…", fr: "Connexion…" },
+  "login.error": { en: "Invalid username or password", fr: "Nom d'utilisateur ou mot de passe incorrect" },
+
+  // Auth / header
+  "app.logout": { en: "Logout", fr: "Déconnexion" },
+  "app.roleViewer": { en: "Viewer", fr: "Lecteur" },
+  "app.roleEditor": { en: "Editor", fr: "Éditeur" },
+
   // useFamily fallback
   "family.untitled": { en: "Untitled", fr: "Sans titre" },
 } as const;
@@ -161,7 +175,7 @@ const I18nContext = createContext<I18nContextType>({
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [lang, setLang] = useState<Lang>(() => {
     const stored = localStorage.getItem("genealogy-lang");
-    return stored === "fr" ? "fr" : "en";
+    return stored === "en" ? "en" : "fr";
   });
 
   const handleSetLang = useCallback((l: Lang) => {
