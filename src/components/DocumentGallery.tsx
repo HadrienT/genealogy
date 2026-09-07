@@ -19,20 +19,15 @@ interface DocMeta {
   uploadedAt: string;
 }
 
-interface Props {
-  personId: string;
-}
-
 const isImage = (mime: string) => mime.startsWith("image/");
 const isPdf = (mime: string) => mime === "application/pdf";
 
-/** Build authenticated URL for viewing a document */
 function docUrl(personId: string, docId: string, download?: boolean) {
   const base = `${API_BASE}/api/persons/${personId}/documents/${docId}`;
   return download ? `${base}?download=1` : base;
 }
 
-const DocumentGallery: React.FC<Props> = ({ personId }) => {
+const DocumentGallery: React.FC<{ personId: string }> = ({ personId }) => {
   const { isEditor } = useAuth();
   const { t } = useI18n();
   const [docs, setDocs] = useState<DocMeta[]>([]);
@@ -62,7 +57,6 @@ const DocumentGallery: React.FC<Props> = ({ personId }) => {
     fetchDocs();
   }, [fetchDocs]);
 
-  // Load image thumbnails as authenticated blob URLs
   useEffect(() => {
     const imageDocs = docs.filter((d) => isImage(d.mimeType));
     let cancelled = false;
@@ -71,9 +65,7 @@ const DocumentGallery: React.FC<Props> = ({ personId }) => {
       for (const doc of imageDocs) {
         if (blobUrls[doc.id]) continue;
         try {
-          const res = await fetch(docUrl(personId, doc.id), {
-            headers: authHeaders(),
-          });
+          const res = await fetch(docUrl(personId, doc.id), { headers: authHeaders() });
           if (!res.ok) continue;
           const blob = await res.blob();
           if (cancelled) return;
@@ -92,7 +84,6 @@ const DocumentGallery: React.FC<Props> = ({ personId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docs, personId]);
 
-  // Cleanup blob URLs on unmount
   useEffect(() => {
     return () => {
       Object.values(blobUrls).forEach((url) => URL.revokeObjectURL(url));
@@ -139,9 +130,7 @@ const DocumentGallery: React.FC<Props> = ({ personId }) => {
 
   const handleDownload = async (doc: DocMeta) => {
     try {
-      const res = await fetch(docUrl(personId, doc.id, true), {
-        headers: authHeaders(),
-      });
+      const res = await fetch(docUrl(personId, doc.id, true), { headers: authHeaders() });
       if (!res.ok) return;
       const blob = await res.blob();
       const a = document.createElement("a");
@@ -172,20 +161,28 @@ const DocumentGallery: React.FC<Props> = ({ personId }) => {
 
   if (loading) {
     return (
-      <div style={{ marginTop: 12, color: "#94a3b8", fontSize: 12 }}>
+      <div style={{ marginTop: 12, color: "var(--ink-faint)", fontSize: 12 }}>
         {t("docs.loading")}
       </div>
     );
   }
 
   return (
-    <div style={{ marginTop: 16 }}>
-      <div style={headerRowStyle}>
-        <div style={sectionLabelStyle}>
-          {t("docs.title")} {docs.length > 0 && <span style={countBadge}>{docs.length}</span>}
+    <div style={{ marginTop: 18 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <div className="section-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {t("docs.title")}
+          {docs.length > 0 && <span className="chip">{docs.length}</span>}
         </div>
         {isEditor && (
-          <label style={uploadBtnStyle}>
+          <label className="upload-btn">
             {uploading ? t("docs.uploading") : t("docs.upload")}
             <input
               ref={fileInputRef}
@@ -200,36 +197,31 @@ const DocumentGallery: React.FC<Props> = ({ personId }) => {
       </div>
 
       {docs.length === 0 && (
-        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-faint)", marginTop: 6 }}>
           {t("docs.empty")}
         </div>
       )}
 
-      {/* Thumbnail grid */}
       {docs.length > 0 && (
-        <div style={gridStyle}>
+        <div className="docgrid">
           {docs.map((doc) => (
             <div
               key={doc.id}
-              style={thumbCardStyle}
+              className="doccard"
               onClick={() => setViewDoc(doc)}
               title={doc.name}
             >
               {isImage(doc.mimeType) && blobUrls[doc.id] ? (
-                <img
-                  src={blobUrls[doc.id]}
-                  alt={doc.name}
-                  style={thumbImgStyle}
-                />
+                <img className="doccard__media" src={blobUrls[doc.id]} alt={doc.name} />
               ) : (
-                <div style={thumbPlaceholderStyle}>
-                  <span style={{ fontSize: 28 }}>{fileIcon(doc.mimeType)}</span>
-                  <span style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
+                <div className="doccard__ph">
+                  <span style={{ fontSize: 26 }}>{fileIcon(doc.mimeType)}</span>
+                  <span style={{ fontSize: 9, color: "var(--ink-faint)", marginTop: 2 }}>
                     {doc.name.split(".").pop()?.toUpperCase()}
                   </span>
                 </div>
               )}
-              <div style={thumbLabelStyle} title={doc.name}>
+              <div className="doccard__label">
                 {doc.name.length > 18 ? doc.name.slice(0, 15) + "…" : doc.name}
               </div>
             </div>
@@ -237,7 +229,6 @@ const DocumentGallery: React.FC<Props> = ({ personId }) => {
         </div>
       )}
 
-      {/* ── Viewer Modal ─────────────────────────── */}
       {viewDoc && (
         <DocumentViewer
           personId={personId}
@@ -254,8 +245,6 @@ const DocumentGallery: React.FC<Props> = ({ personId }) => {
     </div>
   );
 };
-
-// ── Document Viewer Modal ───────────────────────
 
 interface ViewerProps {
   personId: string;
@@ -282,7 +271,6 @@ const DocumentViewer: React.FC<ViewerProps> = ({
 }) => {
   const [contentUrl, setContentUrl] = useState<string | null>(blobUrl ?? null);
 
-  // For non-image files (PDF, etc.), fetch as blob and create object URL
   useEffect(() => {
     if (blobUrl) {
       setContentUrl(blobUrl);
@@ -291,9 +279,7 @@ const DocumentViewer: React.FC<ViewerProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(docUrl(personId, doc.id), {
-          headers: authHeaders(),
-        });
+        const res = await fetch(docUrl(personId, doc.id), { headers: authHeaders() });
         if (!res.ok || cancelled) return;
         const blob = await res.blob();
         if (cancelled) return;
@@ -307,71 +293,82 @@ const DocumentViewer: React.FC<ViewerProps> = ({
     };
   }, [personId, doc.id, blobUrl]);
 
-  // Cleanup non-shared blob URLs
   useEffect(() => {
     return () => {
-      if (contentUrl && contentUrl !== blobUrl) {
-        URL.revokeObjectURL(contentUrl);
-      }
+      if (contentUrl && contentUrl !== blobUrl) URL.revokeObjectURL(contentUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div style={overlayStyle} onClick={onClose}>
-      <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div style={modalHeaderStyle}>
+    <div className="overlay" onClick={onClose}>
+      <div className="viewer" onClick={(e) => e.stopPropagation()}>
+        <div className="viewer__head">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: 15,
+                fontWeight: 600,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {doc.name}
             </div>
-            <div style={{ fontSize: 11, color: "#94a3b8" }}>
+            <div style={{ fontSize: 11, color: "var(--ink-faint)" }}>
               {formatSize(doc.size)} · {new Date(doc.uploadedAt).toLocaleDateString()}
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
             {isEditor && (
               <>
-                <button onClick={onDownload} style={modalActionBtn} title={t("docs.download")}>
+                <button className="btn btn--icon" onClick={onDownload} title={t("docs.download")}>
                   ⬇️
                 </button>
-                <button onClick={onDelete} style={{ ...modalActionBtn, color: "#ef4444" }} title={t("docs.delete")}>
+                <button className="btn btn--icon btn--danger" onClick={onDelete} title={t("docs.delete")}>
                   🗑️
                 </button>
               </>
             )}
-            <button onClick={onClose} style={modalActionBtn} title={t("detail.close")}>
+            <button className="iconclose" onClick={onClose} title={t("detail.close")}>
               ✕
             </button>
           </div>
         </div>
 
-        {/* Content */}
-        <div style={modalContentStyle}>
+        <div className="viewer__body">
           {!contentUrl ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8" }}>
-              {t("docs.loading")}
-            </div>
+            <div style={{ color: "var(--ink-faint)" }}>{t("docs.loading")}</div>
           ) : isImage(doc.mimeType) ? (
             <img
               src={contentUrl}
               alt={doc.name}
-              style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 4 }}
+              style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 6 }}
             />
           ) : isPdf(doc.mimeType) ? (
             <iframe
               src={contentUrl}
               title={doc.name}
-              style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }}
+              style={{ width: "100%", height: "100%", border: "none", borderRadius: 6 }}
             />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 12 }}>
-              <span style={{ fontSize: 48 }}>📎</span>
-              <div style={{ fontSize: 14, color: "#64748b" }}>{doc.name}</div>
-              <div style={{ fontSize: 12, color: "#94a3b8" }}>{t("docs.noPreview")}</div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <span style={{ fontSize: 44 }}>📎</span>
+              <div style={{ fontSize: 14 }}>{doc.name}</div>
+              <div style={{ fontSize: 12, color: "var(--ink-faint)" }}>
+                {t("docs.noPreview")}
+              </div>
               {isEditor && (
-                <button onClick={onDownload} style={downloadBtnStyle}>
+                <button className="btn btn--primary" onClick={onDownload}>
                   {t("docs.download")}
                 </button>
               )}
@@ -381,148 +378,6 @@ const DocumentViewer: React.FC<ViewerProps> = ({
       </div>
     </div>
   );
-};
-
-// ── Styles ──────────────────────────────────────
-
-const headerRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-};
-
-const sectionLabelStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#94a3b8",
-  textTransform: "uppercase",
-  letterSpacing: "0.03em",
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-};
-
-const countBadge: React.CSSProperties = {
-  fontSize: 10,
-  background: "#f1f5f9",
-  color: "#64748b",
-  padding: "1px 6px",
-  borderRadius: 8,
-  fontWeight: 500,
-};
-
-const uploadBtnStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#3b82f6",
-  cursor: "pointer",
-  padding: "3px 10px",
-  border: "1px dashed #93c5fd",
-  borderRadius: 6,
-  background: "#eff6ff",
-};
-
-const gridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))",
-  gap: 8,
-  marginTop: 8,
-};
-
-const thumbCardStyle: React.CSSProperties = {
-  cursor: "pointer",
-  borderRadius: 8,
-  border: "1px solid #e2e8f0",
-  overflow: "hidden",
-  background: "white",
-  transition: "box-shadow 0.15s",
-};
-
-const thumbImgStyle: React.CSSProperties = {
-  width: "100%",
-  height: 72,
-  objectFit: "cover",
-  display: "block",
-};
-
-const thumbPlaceholderStyle: React.CSSProperties = {
-  width: "100%",
-  height: 72,
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "#f8fafc",
-};
-
-const thumbLabelStyle: React.CSSProperties = {
-  fontSize: 10,
-  color: "#64748b",
-  padding: "4px 6px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const overlayStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.6)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 10000,
-};
-
-const modalStyle: React.CSSProperties = {
-  background: "white",
-  borderRadius: 12,
-  width: "min(90vw, 900px)",
-  height: "min(85vh, 700px)",
-  display: "flex",
-  flexDirection: "column",
-  overflow: "hidden",
-  boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-};
-
-const modalHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  padding: "12px 16px",
-  borderBottom: "1px solid #e2e8f0",
-  gap: 12,
-};
-
-const modalActionBtn: React.CSSProperties = {
-  background: "none",
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 14,
-  padding: "4px 8px",
-  lineHeight: 1,
-};
-
-const modalContentStyle: React.CSSProperties = {
-  flex: 1,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 16,
-  overflow: "auto",
-  background: "#f8fafc",
-};
-
-const downloadBtnStyle: React.CSSProperties = {
-  padding: "8px 20px",
-  background: "#3b82f6",
-  color: "white",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
 };
 
 export default DocumentGallery;
