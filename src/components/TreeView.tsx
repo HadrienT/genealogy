@@ -8,35 +8,29 @@ import {
   useEdgesState,
   type NodeMouseHandler,
 } from "@xyflow/react";
-import { useI18n } from "../hooks/useI18n";
-import { useAuth } from "../hooks/useAuth";
 import "@xyflow/react/dist/style.css";
 
+import { useI18n } from "../hooks/useI18n";
+import { useAuth } from "../hooks/useAuth";
 import { useFamily } from "../hooks/useFamily";
-import { buildTreeLayout } from "../utils/treeLayout";
+import { buildTreeLayout, type PersonNodeData } from "../utils/treeLayout";
 import PersonNode from "./PersonNode";
-import JunctionNode from "./JunctionNode";
-import MarriageEdge from "./MarriageEdge";
+import UnionNode from "./UnionNode";
 import AddPersonForm from "./AddPersonForm";
 
-const nodeTypes = { personNode: PersonNode, junctionNode: JunctionNode };
-const edgeTypes = { marriageEdge: MarriageEdge };
+const nodeTypes = { person: PersonNode, union: UnionNode };
 
 const TreeView: React.FC = () => {
-  const { people, selectPerson, marriages, getPersonById, requestEditPerson } = useFamily();
-  const { t } = useI18n();
+  const { people, selectPerson, marriages, getPersonById, requestEditPerson } =
+    useFamily();
+  const { t, months } = useI18n();
   const { isEditor } = useAuth();
 
-  // Multi-selection for context menu (up to 2 person nodes)
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  // Add-child form
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
+    null
+  );
   const [showAddChild, setShowAddChild] = useState(false);
-  // Add-parent form
   const [showAddParent, setShowAddParent] = useState(false);
   const [addParentConfig, setAddParentConfig] = useState<{
     childId: string;
@@ -44,24 +38,29 @@ const TreeView: React.FC = () => {
   } | null>(null);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
-    () => buildTreeLayout(people, marriages),
-    [people, marriages]
+    () => buildTreeLayout(people, marriages, months),
+    [people, marriages, months]
   );
 
-  // Augment nodes with selection state
   const nodesWithSelection = useMemo(
     () =>
-      layoutNodes.map((n) => ({
-        ...n,
-        data: { ...n.data, selected: selectedIds.includes(n.id) },
-      })),
+      layoutNodes.map((n) =>
+        n.type === "person"
+          ? {
+              ...n,
+              data: {
+                ...(n.data as PersonNodeData),
+                selected: selectedIds.includes(n.id),
+              },
+            }
+          : n
+      ),
     [layoutNodes, selectedIds]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(nodesWithSelection);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
 
-  // Sync ReactFlow internal state when the family data or selection changes
   useEffect(() => {
     setNodes(nodesWithSelection);
     setEdges(layoutEdges);
@@ -69,28 +68,18 @@ const TreeView: React.FC = () => {
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (event, node) => {
-      // Only operate on person nodes, not junction nodes
-      if (node.type !== "personNode") return;
-
-      const nativeEvent = event as unknown as MouseEvent;
-      if (nativeEvent.ctrlKey || nativeEvent.metaKey || nativeEvent.shiftKey) {
-        // Multi-select: toggle this node in the selection (max 2)
+      if (node.type !== "person") return;
+      const native = event as unknown as MouseEvent;
+      if (native.ctrlKey || native.metaKey || native.shiftKey) {
         setSelectedIds((prev) => {
-          if (prev.includes(node.id)) {
-            return prev.filter((id) => id !== node.id);
-          }
-          if (prev.length >= 2) {
-            // Replace the oldest selection
-            return [prev[1], node.id];
-          }
+          if (prev.includes(node.id)) return prev.filter((id) => id !== node.id);
+          if (prev.length >= 2) return [prev[1], node.id];
           return [...prev, node.id];
         });
       } else {
-        // Single click: select this node and open detail panel
         setSelectedIds([node.id]);
         selectPerson(node.id);
       }
-      // Close context menu on any click
       setContextMenu(null);
     },
     [selectPerson]
@@ -98,7 +87,7 @@ const TreeView: React.FC = () => {
 
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
     (_event, node) => {
-      if (node.type !== "personNode") return;
+      if (node.type !== "person") return;
       selectPerson(node.id);
       if (isEditor) requestEditPerson(node.id);
     },
@@ -107,22 +96,13 @@ const TreeView: React.FC = () => {
 
   const onNodeContextMenu: NodeMouseHandler = useCallback(
     (event, node) => {
-      if (node.type !== "personNode") return;
-      if (!isEditor) return;
+      if (node.type !== "person" || !isEditor) return;
       event.preventDefault();
-
-      // If right-clicked node isn't in selection, select it
-      setSelectedIds((prev) => {
-        if (prev.includes(node.id)) return prev;
-        return [node.id];
-      });
-
-      setContextMenu({
-        x: (event as unknown as MouseEvent).clientX,
-        y: (event as unknown as MouseEvent).clientY,
-      });
+      setSelectedIds((prev) => (prev.includes(node.id) ? prev : [node.id]));
+      const e = event as unknown as MouseEvent;
+      setContextMenu({ x: e.clientX, y: e.clientY });
     },
-    []
+    [isEditor]
   );
 
   const handleAddChild = useCallback(() => {
@@ -136,7 +116,6 @@ const TreeView: React.FC = () => {
     if (!person) return;
     const parentCount = (person.parentIds ?? []).length;
     if (parentCount >= 2) return;
-
     setAddParentConfig({
       childId: person.id,
       partnerIds: parentCount === 1 ? [...person.parentIds!] : [],
@@ -151,7 +130,6 @@ const TreeView: React.FC = () => {
     setContextMenu(null);
   }, [selectPerson]);
 
-  // Build label for context menu
   const selectedNames = selectedIds
     .map((id) => {
       const p = getPersonById(id);
@@ -161,96 +139,73 @@ const TreeView: React.FC = () => {
     })
     .join(" & ");
 
-  // How many parents does the single-selected person have?
-  const singleSelected = selectedIds.length === 1 ? getPersonById(selectedIds[0]) : null;
-  const parentCount = singleSelected ? (singleSelected.parentIds ?? []).length : 0;
+  const singleSelected =
+    selectedIds.length === 1 ? getPersonById(selectedIds[0]) : null;
+  const parentCount = singleSelected
+    ? (singleSelected.parentIds ?? []).length
+    : 0;
 
   return (
-    <div style={{ width: "100%", height: "100%" }}>
+    <div className="tree-wrap">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onNodeContextMenu={onNodeContextMenu}
         onPaneClick={handlePaneClick}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
-        minZoom={0.1}
+        fitViewOptions={{ padding: 0.25 }}
+        minZoom={0.05}
         maxZoom={2}
-        defaultEdgeOptions={{ animated: false }}
+        proOptions={{ hideAttribution: false }}
       >
-        <Background gap={20} size={1} color="#e2e8f0" />
-        <Controls
-          style={{
-            background: "white",
-            borderRadius: 8,
-            boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
-          }}
-        />
+        <Background gap={22} size={1.5} color="rgba(120,96,58,0.14)" />
+        <Controls showInteractive={false} />
         <MiniMap
+          pannable
+          zoomable
+          maskColor="rgba(243,234,214,0.6)"
           nodeColor={(node) => {
-            const gender = (node.data as { gender?: string }).gender;
-            if (gender === "male") return "#3b82f6";
-            if (gender === "female") return "#ec4899";
-            return "#94a3b8";
+            if (node.type === "union") return "#9c3b4e";
+            const g = (node.data as { gender?: string }).gender;
+            if (g === "male") return "#3c6478";
+            if (g === "female") return "#9c3b4e";
+            if (g === "other") return "#b1832f";
+            return "#8a7a5f";
           }}
-          style={{ borderRadius: 8 }}
         />
       </ReactFlow>
 
-      {/* Context menu */}
       {contextMenu && selectedIds.length > 0 && (
         <div
-          style={{
-            ...contextMenuStyle,
-            left: contextMenu.x,
-            top: contextMenu.y,
-          }}
+          className="ctxmenu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <div style={contextMenuHeaderStyle}>
-            {selectedNames}
-          </div>
-          <button
-            onClick={handleAddChild}
-            style={contextMenuItemStyle}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "#f1f5f9")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
+          <div className="ctxmenu__head">{selectedNames}</div>
+          <button className="ctxmenu__item" onClick={handleAddChild}>
             {t("tree.addChild")}
           </button>
           {selectedIds.length === 1 && (
             <button
+              className="ctxmenu__item"
               onClick={handleAddParent}
               disabled={parentCount >= 2}
-              style={{
-                ...contextMenuItemStyle,
-                ...(parentCount >= 2
-                  ? { color: "#cbd5e1", cursor: "not-allowed" }
-                  : {}),
-              }}
-              onMouseEnter={(e) => {
-                if (parentCount < 2) e.currentTarget.style.background = "#f1f5f9";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
             >
-              {t("tree.addParent")}{parentCount === 1 ? t("tree.partnerLink") : parentCount >= 2 ? t("tree.maxReached") : ""}
+              {t("tree.addParent")}
+              {parentCount === 1
+                ? t("tree.partnerLink")
+                : parentCount >= 2
+                  ? t("tree.maxReached")
+                  : ""}
             </button>
           )}
         </div>
       )}
 
-      {/* Add child form */}
       {showAddChild && (
         <AddPersonForm
           onClose={() => {
@@ -261,7 +216,6 @@ const TreeView: React.FC = () => {
         />
       )}
 
-      {/* Add parent form */}
       {showAddParent && addParentConfig && (
         <AddPersonForm
           onClose={() => {
@@ -274,100 +228,48 @@ const TreeView: React.FC = () => {
         />
       )}
 
-      {/* Legend */}
-      <div style={legendStyle}>
-        <div style={{ fontWeight: 600, fontSize: 12, color: "#475569", marginBottom: 8 }}>{t("tree.legend")}</div>
-        <div style={legendRowStyle}>
-          <span style={{ ...legendSwatchStyle, background: "#dbeafe", border: "2px solid #3b82f6" }} />
-          <span style={legendLabelStyle}>{t("tree.male")}</span>
+      <div className="legend floating">
+        <div className="legend__title">{t("tree.legend")}</div>
+        <div className="legend__row">
+          <span
+            className="legend__swatch"
+            style={{ background: "var(--male-tint)", borderColor: "var(--male)" }}
+          />
+          {t("tree.male")}
         </div>
-        <div style={legendRowStyle}>
-          <span style={{ ...legendSwatchStyle, background: "#fce7f3", border: "2px solid #ec4899" }} />
-          <span style={legendLabelStyle}>{t("tree.female")}</span>
+        <div className="legend__row">
+          <span
+            className="legend__swatch"
+            style={{
+              background: "var(--female-tint)",
+              borderColor: "var(--female)",
+            }}
+          />
+          {t("tree.female")}
         </div>
-        <div style={{ ...legendRowStyle, marginTop: 4 }}>
-          <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#64748b" strokeWidth="2" /></svg>
-          <span style={legendLabelStyle}>{t("tree.parentChild")}</span>
+        <div className="legend__row">
+          <svg width="26" height="10">
+            <line x1="0" y1="5" x2="26" y2="5" stroke="#b79f76" strokeWidth="2" />
+          </svg>
+          {t("tree.parentChild")}
         </div>
-        <div style={legendRowStyle}>
-          <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 4" /></svg>
-          <span style={legendLabelStyle}>{t("tree.siblings")}</span>
-        </div>
-        <div style={legendRowStyle}>
-          <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#e11d48" strokeWidth="2" strokeDasharray="6 3" /></svg>
-          <span style={legendLabelStyle}>{t("tree.partnerMarriage")}</span>
+        <div className="legend__row">
+          <svg width="26" height="10">
+            <line
+              x1="0"
+              y1="5"
+              x2="26"
+              y2="5"
+              stroke="var(--wine)"
+              strokeWidth="2"
+              strokeDasharray="5 3"
+            />
+          </svg>
+          {t("tree.partnerMarriage")}
         </div>
       </div>
     </div>
   );
-};
-
-const legendStyle: React.CSSProperties = {
-  position: "absolute",
-  bottom: 16,
-  left: 16,
-  background: "white",
-  border: "1px solid #e2e8f0",
-  borderRadius: 8,
-  padding: "10px 14px",
-  boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-  zIndex: 10,
-  fontFamily: "'Inter', system-ui, sans-serif",
-};
-
-const legendRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  marginBottom: 4,
-};
-
-const legendSwatchStyle: React.CSSProperties = {
-  display: "inline-block",
-  width: 16,
-  height: 16,
-  borderRadius: 4,
-};
-
-const legendLabelStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "#475569",
-};
-
-const contextMenuStyle: React.CSSProperties = {
-  position: "fixed",
-  background: "white",
-  borderRadius: 8,
-  border: "1px solid #e2e8f0",
-  boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-  zIndex: 2000,
-  minWidth: 180,
-  overflow: "hidden",
-  fontFamily: "'Inter', system-ui, sans-serif",
-};
-
-const contextMenuHeaderStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  fontSize: 12,
-  fontWeight: 600,
-  color: "#64748b",
-  borderBottom: "1px solid #f1f5f9",
-  textOverflow: "ellipsis",
-  overflow: "hidden",
-  whiteSpace: "nowrap",
-};
-
-const contextMenuItemStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  padding: "8px 12px",
-  background: "transparent",
-  border: "none",
-  textAlign: "left",
-  cursor: "pointer",
-  fontSize: 13,
-  color: "#334155",
-  fontFamily: "inherit",
 };
 
 export default TreeView;

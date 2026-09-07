@@ -1,5 +1,12 @@
 import React, { useRef, useEffect, useMemo, useState, useCallback } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useFamily } from "../hooks/useFamily";
@@ -7,22 +14,21 @@ import { formatDate } from "../utils/formatDate";
 import type { Person } from "../types/person";
 import { useI18n } from "../hooks/useI18n";
 
-// Fix default marker icons (Leaflet + bundlers issue)
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)
-  ._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
 });
 
-// ── Map filter flags ─────────────────────────────────────
+const BIRTH_COLOR = "#3c6478";
+const DEATH_COLOR = "#a63a2b";
+const BOTH_COLOR = "#7a5aa0";
 
-// ── Pin type for each marker entry ───────────────────────
 interface PinEntry {
   person: Person;
   type: "birth" | "death";
@@ -30,13 +36,12 @@ interface PinEntry {
   lng: number;
 }
 
-// ── Helper: colored pin icon (classic marker shape) ──────
 function makeColorIcon(color: string): L.DivIcon {
   return L.divIcon({
     className: "",
     html: `<svg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41">
-      <path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 21.9 12.5 41 12.5 41S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0Z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
-      <circle cx="12.5" cy="12.5" r="5" fill="#fff" opacity=".85"/>
+      <path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 21.9 12.5 41 12.5 41S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0Z" fill="${color}" stroke="#fdf8ec" stroke-width="1.5"/>
+      <circle cx="12.5" cy="12.5" r="5" fill="#fdf8ec" opacity=".9"/>
     </svg>`,
     iconSize: [25, 41],
     iconAnchor: [12, 41],
@@ -49,18 +54,10 @@ function makeBadgeIcon(color: string, count: number): L.DivIcon {
     className: "",
     html: `<div style="position:relative;width:25px;height:41px;">
       <svg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41">
-        <path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 21.9 12.5 41 12.5 41S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0Z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
-        <circle cx="12.5" cy="12.5" r="5" fill="#fff" opacity=".85"/>
+        <path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 21.9 12.5 41 12.5 41S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0Z" fill="${color}" stroke="#fdf8ec" stroke-width="1.5"/>
+        <circle cx="12.5" cy="12.5" r="5" fill="#fdf8ec" opacity=".9"/>
       </svg>
-      <span style="
-        position:absolute;top:-6px;right:-8px;
-        background:#1e293b;color:#fff;
-        font-size:11px;font-weight:700;
-        min-width:18px;height:18px;line-height:18px;
-        text-align:center;border-radius:9px;
-        padding:0 4px;box-shadow:0 1px 3px rgba(0,0,0,.4);
-        font-family:'Inter',system-ui,sans-serif;
-      ">${count}</span>
+      <span style="position:absolute;top:-6px;right:-8px;background:#33291d;color:#fdf8ec;font-size:11px;font-weight:700;min-width:18px;height:18px;line-height:18px;text-align:center;border-radius:9px;padding:0 4px;box-shadow:0 1px 3px rgba(0,0,0,.4);font-family:Inter,system-ui,sans-serif;">${count}</span>
     </div>`,
     iconSize: [25, 41],
     iconAnchor: [12, 41],
@@ -68,11 +65,6 @@ function makeBadgeIcon(color: string, count: number): L.DivIcon {
   });
 }
 
-const BIRTH_COLOR = "#3b82f6"; // blue
-const DEATH_COLOR = "#ef4444"; // red
-const BOTH_COLOR = "#8b5cf6";  // purple (mixed)
-
-// ── Group pins whose coordinates are very close ──────────
 interface LocationGroup {
   key: string;
   lat: number;
@@ -81,9 +73,8 @@ interface LocationGroup {
 }
 
 function groupPins(pins: PinEntry[]): LocationGroup[] {
-  const precision = 3; // ~110 m
+  const precision = 3;
   const map = new Map<string, LocationGroup>();
-
   for (const pin of pins) {
     const lat = Number(pin.lat.toFixed(precision));
     const lng = Number(pin.lng.toFixed(precision));
@@ -101,7 +92,6 @@ function groupColor(pins: PinEntry[]): string {
   return hasBirth ? BIRTH_COLOR : DEATH_COLOR;
 }
 
-// ── Popup entry ──────────────────────────────────────────
 const PinPopupEntry: React.FC<{
   pin: PinEntry;
   onClick: () => void;
@@ -124,7 +114,7 @@ const PinPopupEntry: React.FC<{
     <div
       style={{
         padding: "5px 0",
-        borderBottom: showDivider ? "1px solid #e2e8f0" : "none",
+        borderBottom: showDivider ? "1px solid var(--line)" : "none",
         cursor: "pointer",
       }}
       onClick={onClick}
@@ -133,7 +123,6 @@ const PinPopupEntry: React.FC<{
         {showType && (
           <span
             style={{
-              display: "inline-block",
               width: 8,
               height: 8,
               borderRadius: "50%",
@@ -142,12 +131,12 @@ const PinPopupEntry: React.FC<{
             }}
           />
         )}
-        <strong style={{ color: "#1e293b", fontSize: 13 }}>
+        <strong style={{ fontFamily: "var(--font-serif)", fontSize: 13 }}>
           {p.firstName} {p.lastName}
         </strong>
       </div>
       {dateStr && (
-        <div style={{ fontSize: 11, color: "#64748b", marginLeft: showType ? 14 : 0 }}>
+        <div style={{ fontSize: 11, color: "var(--ink-soft)", marginLeft: showType ? 14 : 0 }}>
           {pin.type === "birth" ? t("map.born") : t("map.died")}: {dateStr}
         </div>
       )}
@@ -155,9 +144,6 @@ const PinPopupEntry: React.FC<{
   );
 };
 
-/**
- * Handles flying to a target marker and opening its popup.
- */
 const FlyToHandler: React.FC<{
   markerRefs: React.MutableRefObject<Record<string, L.Marker>>;
   personToGroup: Map<string, string>;
@@ -167,19 +153,15 @@ const FlyToHandler: React.FC<{
 
   useEffect(() => {
     if (!mapFlyTarget) return;
-
     const groupKey = personToGroup.get(mapFlyTarget) ?? mapFlyTarget;
     const marker = markerRefs.current[groupKey];
     if (!marker) {
       clearMapFlyTarget();
       return;
     }
-
     map.closePopup();
     const targetLatLng = marker.getLatLng();
-    const currentCenter = map.getCenter();
-    const distance = currentCenter.distanceTo(targetLatLng);
-
+    const distance = map.getCenter().distanceTo(targetLatLng);
     if (distance < 100) {
       setTimeout(() => {
         marker.openPopup();
@@ -187,9 +169,7 @@ const FlyToHandler: React.FC<{
       }, 50);
       return;
     }
-
     map.flyTo(targetLatLng, Math.max(map.getZoom(), 8), { duration: 0.6 });
-
     const onMoveEnd = () => {
       map.off("moveend", onMoveEnd);
       setTimeout(() => {
@@ -198,15 +178,13 @@ const FlyToHandler: React.FC<{
       }, 100);
     };
     map.on("moveend", onMoveEnd);
-
-    const safetyTimer = setTimeout(() => {
+    const safety = setTimeout(() => {
       map.off("moveend", onMoveEnd);
       marker.openPopup();
       clearMapFlyTarget();
     }, 2000);
-
     return () => {
-      clearTimeout(safetyTimer);
+      clearTimeout(safety);
       map.off("moveend", onMoveEnd);
     };
   }, [mapFlyTarget, map, markerRefs, personToGroup, clearMapFlyTarget]);
@@ -214,52 +192,39 @@ const FlyToHandler: React.FC<{
   return null;
 };
 
-/** Deselect person when clicking on the map background */
 const MapClickDeselect: React.FC = () => {
   const { selectPerson } = useFamily();
-  useMapEvents({
-    click: () => selectPerson(null),
-  });
+  useMapEvents({ click: () => selectPerson(null) });
   return null;
 };
 
-/** Extract the year from a date string ("1990", "1990-07", "1990-07-22") */
 function extractYear(dateStr?: string): number | null {
   if (!dateStr) return null;
   const y = parseInt(dateStr.slice(0, 4), 10);
   return Number.isFinite(y) ? y : null;
 }
 
-/** Inner component that renders markers based on filters */
-const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: number | null }> = ({ showBirth, showDeath, maxYear }) => {
+const MapMarkers: React.FC<{
+  showBirth: boolean;
+  showDeath: boolean;
+  maxYear: number | null;
+}> = ({ showBirth, showDeath, maxYear }) => {
   const { people, selectPerson } = useFamily();
   const { t, months } = useI18n();
   const markerRefs = useRef<Record<string, L.Marker>>({});
 
-  // Build pins based on current filters
   const pins = useMemo(() => {
     const result: PinEntry[] = [];
     for (const p of people) {
-      // Timeline filter: only include person if born on or before maxYear
       if (maxYear !== null) {
         const by = extractYear(p.birthDate);
         if (by === null || by > maxYear) continue;
       }
       if (showBirth && p.birthCoordinates) {
-        result.push({
-          person: p,
-          type: "birth",
-          lat: p.birthCoordinates.lat,
-          lng: p.birthCoordinates.lng,
-        });
+        result.push({ person: p, type: "birth", lat: p.birthCoordinates.lat, lng: p.birthCoordinates.lng });
       }
       if (showDeath && p.deathCoordinates) {
-        result.push({
-          person: p,
-          type: "death",
-          lat: p.deathCoordinates.lat,
-          lng: p.deathCoordinates.lng,
-        });
+        result.push({ person: p, type: "death", lat: p.deathCoordinates.lat, lng: p.deathCoordinates.lng });
       }
     }
     return result;
@@ -269,9 +234,7 @@ const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: nu
 
   const personToGroup = useMemo(() => {
     const m = new Map<string, string>();
-    for (const g of groups) {
-      for (const pin of g.pins) m.set(pin.person.id, g.key);
-    }
+    for (const g of groups) for (const pin of g.pins) m.set(pin.person.id, g.key);
     return m;
   }, [groups]);
 
@@ -283,8 +246,6 @@ const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: nu
         const isSingle = g.pins.length === 1;
         const color = groupColor(g.pins);
         const showType = showBirth && showDeath;
-
-        // Location label for multi-person header
         const firstPin = g.pins[0];
         const cityLabel =
           firstPin.type === "birth"
@@ -295,24 +256,16 @@ const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: nu
           <Marker
             key={g.key}
             position={[g.lat, g.lng]}
-            icon={
-              isSingle
-                ? makeColorIcon(color)
-                : makeBadgeIcon(color, g.pins.length)
-            }
+            icon={isSingle ? makeColorIcon(color) : makeBadgeIcon(color, g.pins.length)}
             ref={(ref) => {
               if (ref) markerRefs.current[g.key] = ref;
             }}
-            eventHandlers={
-              isSingle
-                ? { click: () => selectPerson(firstPin.person.id) }
-                : {}
-            }
+            eventHandlers={isSingle ? { click: () => selectPerson(firstPin.person.id) } : {}}
           >
             <Popup>
               <div
                 style={{
-                  fontFamily: "'Inter', system-ui, sans-serif",
+                  fontFamily: "var(--font-sans)",
                   minWidth: 180,
                   maxHeight: 280,
                   overflowY: g.pins.length > 5 ? "auto" : "visible",
@@ -322,17 +275,9 @@ const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: nu
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {showType && (
-                        <span
-                          style={{
-                            display: "inline-block",
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            background: color,
-                          }}
-                        />
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
                       )}
-                      <strong>
+                      <strong style={{ fontFamily: "var(--font-serif)" }}>
                         {firstPin.person.firstName} {firstPin.person.lastName}
                       </strong>
                     </div>
@@ -355,14 +300,7 @@ const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: nu
                   </>
                 ) : (
                   <>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#64748b",
-                        marginBottom: 4,
-                        fontWeight: 600,
-                      }}
-                    >
+                    <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 4, fontWeight: 600 }}>
                       {cityLabel || t("map.thisLocation")} — {g.pins.length} {t("map.entries")}
                     </div>
                     {g.pins.map((pin, idx) => (
@@ -385,70 +323,18 @@ const MapMarkers: React.FC<{ showBirth: boolean; showDeath: boolean; maxYear: nu
   );
 };
 
-// ── Toggle bar styles ────────────────────────────────────
-const toggleBarStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 12,
-  right: 12,
-  zIndex: 1000,
-  display: "flex",
-  background: "#fff",
-  borderRadius: 8,
-  boxShadow: "0 2px 8px rgba(0,0,0,.15)",
-  overflow: "hidden",
-  border: "1px solid #e2e8f0",
-};
-
-function toggleBtnStyle(active: boolean, color: string): React.CSSProperties {
-  return {
-    padding: "6px 16px",
-    fontSize: 13,
-    fontWeight: 600,
-    fontFamily: "'Inter', system-ui, sans-serif",
-    cursor: "pointer",
-    border: "none",
-    borderRight: "1px solid #e2e8f0",
-    background: active ? color : "#fff",
-    color: active ? "#fff" : "#475569",
-    transition: "all .15s",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-  };
-}
-
-// ── Timeline slider styles ───────────────────────────────
-const timelineBarStyle: React.CSSProperties = {
-  position: "absolute",
-  bottom: 16,
-  left: 60,
-  right: 60,
-  zIndex: 1000,
-  background: "rgba(255,255,255,.92)",
-  backdropFilter: "blur(4px)",
-  borderRadius: 10,
-  boxShadow: "0 2px 10px rgba(0,0,0,.15)",
-  padding: "8px 20px",
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  fontFamily: "'Inter', system-ui, sans-serif",
-};
-
 const MapView: React.FC = () => {
   const { people } = useFamily();
   const { t } = useI18n();
   const [showBirth, setShowBirth] = useState(true);
   const [showDeath, setShowDeath] = useState(false);
 
-  // ── Animation state ──────────────────────────────────
   const [isPlaying, setIsPlaying] = useState(false);
   const [stepSize, setStepSize] = useState(5);
   const [intervalMs, setIntervalMs] = useState(1000);
   const [showSettings, setShowSettings] = useState(false);
   const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Collect all coordinates for centering
   const allCoords = useMemo(() => {
     const coords: { lat: number; lng: number }[] = [];
     for (const p of people) {
@@ -458,7 +344,6 @@ const MapView: React.FC = () => {
     return coords;
   }, [people]);
 
-  // Compute birth year range for the timeline slider
   const { minYear, maxYear: dataMaxYear } = useMemo(() => {
     let lo = Infinity;
     let hi = -Infinity;
@@ -473,12 +358,10 @@ const MapView: React.FC = () => {
   }, [people]);
 
   const [timelineYear, setTimelineYear] = useState<number | null>(null);
-  // When data range changes (tree switch), reset slider to max
   useEffect(() => {
     setTimelineYear(dataMaxYear);
   }, [dataMaxYear]);
 
-  // ── Animation logic ──────────────────────────────────
   const stopAnimation = useCallback(() => {
     if (animRef.current) {
       clearInterval(animRef.current);
@@ -489,16 +372,12 @@ const MapView: React.FC = () => {
 
   const startAnimation = useCallback(() => {
     if (minYear === null || dataMaxYear === null) return;
-    // If already at or past the end, restart from beginning
-    setTimelineYear((prev) => {
-      const start = (prev === null || prev >= dataMaxYear) ? minYear : prev;
-      // We set the year immediately to the starting point
-      return start;
-    });
+    setTimelineYear((prev) =>
+      prev === null || prev >= dataMaxYear ? minYear : prev
+    );
     setIsPlaying(true);
   }, [minYear, dataMaxYear]);
 
-  // Manage the interval when isPlaying changes
   useEffect(() => {
     if (!isPlaying || minYear === null || dataMaxYear === null) {
       if (animRef.current) {
@@ -512,7 +391,6 @@ const MapView: React.FC = () => {
         const cur = prev ?? minYear;
         const next = cur + stepSize;
         if (next >= dataMaxYear) {
-          // Reached the end — stop
           setTimeout(() => stopAnimation(), 0);
           return dataMaxYear;
         }
@@ -528,11 +406,8 @@ const MapView: React.FC = () => {
   }, [isPlaying, stepSize, intervalMs, minYear, dataMaxYear, stopAnimation]);
 
   const togglePlay = useCallback(() => {
-    if (isPlaying) {
-      stopAnimation();
-    } else {
-      startAnimation();
-    }
+    if (isPlaying) stopAnimation();
+    else startAnimation();
   }, [isPlaying, stopAnimation, startAnimation]);
 
   const resetTimeline = useCallback(() => {
@@ -549,17 +424,16 @@ const MapView: React.FC = () => {
       : [46.6, 2.3];
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      {/* Toggle bar */}
-      <div style={toggleBarStyle}>
+    <div className="map-wrap">
+      <div className="map-toggles floating">
         <button
-          style={toggleBtnStyle(showBirth, BIRTH_COLOR)}
+          className={"map-toggle" + (showBirth ? " map-toggle--on-birth" : "")}
           onClick={() => setShowBirth((v) => !v)}
         >
           {t("map.birth")}
         </button>
         <button
-          style={{ ...toggleBtnStyle(showDeath, DEATH_COLOR), borderRight: "none" }}
+          className={"map-toggle" + (showDeath ? " map-toggle--on-death" : "")}
           onClick={() => setShowDeath((v) => !v)}
         >
           {t("map.death")}
@@ -579,47 +453,24 @@ const MapView: React.FC = () => {
         <MapMarkers showBirth={showBirth} showDeath={showDeath} maxYear={timelineYear} />
       </MapContainer>
 
-      {/* Timeline slider */}
       {minYear !== null && dataMaxYear !== null && (
-        <div style={timelineBarStyle}>
-          {/* Play / Pause */}
+        <div className="timeline floating">
           <button
+            className="timeline__btn timeline__btn--play"
             onClick={togglePlay}
             title={isPlaying ? t("map.pause") : t("map.play")}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: 18,
-              lineHeight: 1,
-              padding: 0,
-              color: "#3b82f6",
-              display: "flex",
-              alignItems: "center",
-            }}
           >
             {isPlaying ? "⏸" : "▶"}
           </button>
-          {/* Reset */}
           <button
+            className="timeline__btn"
             onClick={resetTimeline}
             title={t("map.resetToEnd")}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: 16,
-              lineHeight: 1,
-              padding: 0,
-              color: "#64748b",
-              display: "flex",
-              alignItems: "center",
-            }}
           >
             ⏹
           </button>
 
-          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600, whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 12, color: "var(--ink-soft)", fontWeight: 600 }}>
             {minYear}
           </span>
           <input
@@ -631,103 +482,77 @@ const MapView: React.FC = () => {
               stopAnimation();
               setTimelineYear(Number(e.target.value));
             }}
-            style={{ flex: 1, cursor: "pointer", accentColor: "#3b82f6" }}
           />
-          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600, whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 12, color: "var(--ink-soft)", fontWeight: 600 }}>
             {dataMaxYear}
           </span>
-          <div
-            style={{
-              marginLeft: 4,
-              background: "#3b82f6",
-              color: "#fff",
-              borderRadius: 6,
-              padding: "2px 10px",
-              fontSize: 13,
-              fontWeight: 700,
-              minWidth: 48,
-              textAlign: "center",
-            }}
-          >
-            {timelineYear ?? dataMaxYear}
-          </div>
+          <div className="timeline__year">{timelineYear ?? dataMaxYear}</div>
 
-          {/* Settings gear */}
           <div style={{ position: "relative" }}>
             <button
+              className="timeline__btn"
               onClick={() => setShowSettings((v) => !v)}
               title={t("map.animSettings")}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 16,
-                lineHeight: 1,
-                padding: 0,
-                color: showSettings ? "#3b82f6" : "#94a3b8",
-                display: "flex",
-                alignItems: "center",
-              }}
+              style={{ color: showSettings ? "var(--forest)" : "var(--ink-faint)" }}
             >
               ⚙
             </button>
 
-            {/* Settings popover */}
             {showSettings && (
               <div
+                className="floating"
                 style={{
                   position: "absolute",
                   bottom: "calc(100% + 10px)",
                   right: 0,
-                  background: "#fff",
-                  borderRadius: 10,
-                  boxShadow: "0 4px 16px rgba(0,0,0,.18)",
-                  padding: "14px 18px",
+                  padding: "14px 16px",
                   minWidth: 210,
-                  fontFamily: "'Inter', system-ui, sans-serif",
                   zIndex: 1001,
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: "#1e293b" }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>
                   {t("map.animSettingsTitle")}
                 </div>
-                {/* Step size */}
-                <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: "#475569" }}>
-                  <span style={{ minWidth: 70 }}>{t("map.stepYears")}</span>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 8,
+                    fontSize: 12,
+                    color: "var(--ink-soft)",
+                  }}
+                >
+                  <span style={{ minWidth: 74 }}>{t("map.stepYears")}</span>
                   <input
+                    className="field__input"
                     type="number"
                     min={1}
                     max={50}
                     value={stepSize}
                     onChange={(e) => setStepSize(Math.max(1, Number(e.target.value)))}
-                    style={{
-                      width: 56,
-                      padding: "3px 6px",
-                      borderRadius: 5,
-                      border: "1px solid #cbd5e1",
-                      fontSize: 12,
-                      textAlign: "center",
-                    }}
+                    style={{ width: 60, padding: "3px 6px", textAlign: "center" }}
                   />
                 </label>
-                {/* Speed */}
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#475569" }}>
-                  <span style={{ minWidth: 70 }}>{t("map.speedMs")}</span>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12,
+                    color: "var(--ink-soft)",
+                  }}
+                >
+                  <span style={{ minWidth: 74 }}>{t("map.speedMs")}</span>
                   <input
+                    className="field__input"
                     type="number"
                     min={100}
                     max={5000}
                     step={100}
                     value={intervalMs}
                     onChange={(e) => setIntervalMs(Math.max(100, Number(e.target.value)))}
-                    style={{
-                      width: 56,
-                      padding: "3px 6px",
-                      borderRadius: 5,
-                      border: "1px solid #cbd5e1",
-                      fontSize: 12,
-                      textAlign: "center",
-                    }}
+                    style={{ width: 60, padding: "3px 6px", textAlign: "center" }}
                   />
                 </label>
               </div>

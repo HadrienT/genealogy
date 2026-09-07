@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import multer from "multer";
+import { makeLocalBucket } from "./localBucket.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -15,10 +16,19 @@ const PORT = parseInt(process.env.PORT || "3001", 10);
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const USERS_FILE = "_users.json";
 
-// In Cloud Run, Application Default Credentials are auto-provided.
-// Locally, set GOOGLE_APPLICATION_CREDENTIALS env var or use `gcloud auth application-default login`.
-const storage = new Storage();
-const bucket = storage.bucket(BUCKET_NAME);
+// Storage backend:
+//  - Default: a Google Cloud Storage bucket (Application Default Credentials
+//    are auto-provided on Cloud Run; locally use `gcloud auth application-default login`).
+//  - Local dev: set LOCAL_DATA_DIR to store everything as plain files on disk,
+//    with no GCS bucket or credentials required.
+const LOCAL_DATA_DIR = process.env.LOCAL_DATA_DIR;
+const bucket = LOCAL_DATA_DIR
+  ? makeLocalBucket(LOCAL_DATA_DIR)
+  : new Storage().bucket(BUCKET_NAME);
+
+if (LOCAL_DATA_DIR) {
+  console.log(`Storage: local filesystem → ${LOCAL_DATA_DIR}`);
+}
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
@@ -413,6 +423,8 @@ app.delete("/api/persons/:personId/documents/:docId", authenticate, requireRole(
 Promise.all([seedIfEmpty(), seedUsers()]).then(() => {
   app.listen(PORT, () => {
     console.log(`Genealogy API → http://localhost:${PORT}`);
-    console.log(`  GCS bucket:  ${BUCKET_NAME}`);
+    console.log(
+      LOCAL_DATA_DIR ? `  storage:  ${LOCAL_DATA_DIR}` : `  GCS bucket:  ${BUCKET_NAME}`
+    );
   });
 });

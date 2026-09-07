@@ -20,6 +20,9 @@ dist-ssr
 
 # User data (persisted trees)
 data/trees/
+
+# Local dev storage backend (LOCAL_DATA_DIR) — real family data, never commit
+api/.localdata/
 *.suo
 *.ntvs*
 *.njsproj

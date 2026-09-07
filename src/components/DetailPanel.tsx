@@ -6,7 +6,32 @@ import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceSelection } from "./PlaceAutocomplete";
 import DocumentGallery from "./DocumentGallery";
 import { formatDate } from "../utils/formatDate";
+import { formatMarriagePlace } from "../utils/formatMarriagePlace";
 import { useI18n } from "../hooks/useI18n";
+
+interface MarriageForm {
+  date: string;
+  place: string;
+  placeDisplay: string;
+  city: string;
+  countryCode: string;
+  country: string;
+  postcode: string;
+  county: string;
+  deptCode: string;
+}
+
+const emptyMarriageForm = (): MarriageForm => ({
+  date: "",
+  place: "",
+  placeDisplay: "",
+  city: "",
+  countryCode: "",
+  country: "",
+  postcode: "",
+  county: "",
+  deptCode: "",
+});
 
 const DetailPanel: React.FC = () => {
   const {
@@ -24,7 +49,7 @@ const DetailPanel: React.FC = () => {
   } = useFamily();
   const { t, months } = useI18n();
   const { isEditor } = useAuth();
-  // Store the id being edited so editing resets automatically when person changes
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Person>>({});
   const [latStr, setLatStr] = useState("");
@@ -33,60 +58,71 @@ const DetailPanel: React.FC = () => {
   const [deathLngStr, setDeathLngStr] = useState("");
   const [selParents, setSelParents] = useState<string[]>([]);
   const [selPartners, setSelPartners] = useState<string[]>([]);
-  const [marriageForms, setMarriageForms] = useState<Record<string, {
-    date: string; place: string; placeDisplay: string;
-    city: string; countryCode: string; country: string;
-    postcode: string; county: string; deptCode: string;
-  }>>({}); 
+  const [marriageForms, setMarriageForms] = useState<Record<string, MarriageForm>>(
+    {}
+  );
 
-  // React to external edit requests (e.g. double-click on tree node)
-  useEffect(() => {
-    if (editPersonId && selectedPerson && editPersonId === selectedPerson.id && editingId !== selectedPerson.id) {
-      const sp = selectedPerson;
-      setForm({
-        firstName: sp.firstName ?? "",
-        middleNames: sp.middleNames ?? "",
-        lastName: sp.lastName ?? "",
-        maidenName: sp.maidenName ?? "",
-        gender: sp.gender,
-        birthDate: sp.birthDate ?? "",
-        deathDate: sp.deathDate ?? "",
-        birthPlace: sp.birthPlace ?? "",
-        birthPlaceDisplay: sp.birthPlaceDisplay ?? "",
-        deathPlace: sp.deathPlace ?? "",
-        deathPlaceDisplay: sp.deathPlaceDisplay ?? "",
-        occupation: sp.occupation ?? "",
-        notes: sp.notes ?? "",
-      });
-      setLatStr(sp.birthCoordinates?.lat?.toString() ?? "");
-      setLngStr(sp.birthCoordinates?.lng?.toString() ?? "");
-      setDeathLatStr(sp.deathCoordinates?.lat?.toString() ?? "");
-      setDeathLngStr(sp.deathCoordinates?.lng?.toString() ?? "");
-      setSelParents(sp.parentIds ?? []);
-      setSelPartners(sp.partnerIds ?? []);
-      // Initialize marriage forms for each partner
-      const mf: typeof marriageForms = {};
-      for (const pid of sp.partnerIds ?? []) {
-        const m = marriages.find(
-          (mar) => mar.partnerIds.includes(sp.id) && mar.partnerIds.includes(pid)
-        );
-mf[pid] = {
-        date: m?.date ?? "", place: m?.place ?? "", placeDisplay: m?.placeDisplay ?? "",
-        city: m?.city ?? "", countryCode: m?.countryCode ?? "", country: m?.country ?? "",
-        postcode: m?.postcode ?? "", county: m?.county ?? "", deptCode: m?.deptCode ?? "",
+  const loadPerson = (sp: Person) => {
+    setForm({
+      firstName: sp.firstName ?? "",
+      middleNames: sp.middleNames ?? "",
+      lastName: sp.lastName ?? "",
+      maidenName: sp.maidenName ?? "",
+      gender: sp.gender,
+      birthDate: sp.birthDate ?? "",
+      deathDate: sp.deathDate ?? "",
+      birthPlace: sp.birthPlace ?? "",
+      birthPlaceDisplay: sp.birthPlaceDisplay ?? "",
+      deathPlace: sp.deathPlace ?? "",
+      deathPlaceDisplay: sp.deathPlaceDisplay ?? "",
+      occupation: sp.occupation ?? "",
+      notes: sp.notes ?? "",
+    });
+    setLatStr(sp.birthCoordinates?.lat?.toString() ?? "");
+    setLngStr(sp.birthCoordinates?.lng?.toString() ?? "");
+    setDeathLatStr(sp.deathCoordinates?.lat?.toString() ?? "");
+    setDeathLngStr(sp.deathCoordinates?.lng?.toString() ?? "");
+    setSelParents(sp.parentIds ?? []);
+    setSelPartners(sp.partnerIds ?? []);
+    const mf: Record<string, MarriageForm> = {};
+    for (const pid of sp.partnerIds ?? []) {
+      const m = marriages.find(
+        (mar) => mar.partnerIds.includes(sp.id) && mar.partnerIds.includes(pid)
+      );
+      mf[pid] = {
+        ...emptyMarriageForm(),
+        date: m?.date ?? "",
+        place: m?.place ?? "",
+        placeDisplay: m?.placeDisplay ?? "",
+        city: m?.city ?? "",
+        countryCode: m?.countryCode ?? "",
+        country: m?.country ?? "",
+        postcode: m?.postcode ?? "",
+        county: m?.county ?? "",
+        deptCode: m?.deptCode ?? "",
       };
-      }
-      setMarriageForms(mf);
-      setEditingId(sp.id);
+    }
+    setMarriageForms(mf);
+    setEditingId(sp.id);
+  };
+
+  useEffect(() => {
+    if (
+      editPersonId &&
+      selectedPerson &&
+      editPersonId === selectedPerson.id &&
+      editingId !== selectedPerson.id
+    ) {
+      loadPerson(selectedPerson);
       clearEditPerson();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editPersonId, selectedPerson, editingId, clearEditPerson, marriages]);
 
   if (!selectedPerson) return null;
 
-  const editing = editingId === selectedPerson.id;
-
   const p = selectedPerson;
+  const editing = editingId === p.id;
 
   const handleRelationClick = (id: string) => {
     selectPerson(id);
@@ -106,44 +142,6 @@ mf[pid] = {
   const formatName = (person: Person) =>
     [person.firstName, person.lastName].filter(Boolean).join(" ") || person.id;
 
-  const startEditing = () => {
-    setForm({
-      firstName: p.firstName ?? "",
-      middleNames: p.middleNames ?? "",
-      lastName: p.lastName ?? "",
-      maidenName: p.maidenName ?? "",
-      gender: p.gender,
-      birthDate: p.birthDate ?? "",
-      deathDate: p.deathDate ?? "",
-      birthPlace: p.birthPlace ?? "",
-      birthPlaceDisplay: p.birthPlaceDisplay ?? "",
-      deathPlace: p.deathPlace ?? "",
-      deathPlaceDisplay: p.deathPlaceDisplay ?? "",
-      occupation: p.occupation ?? "",
-      notes: p.notes ?? "",
-    });
-    setLatStr(p.birthCoordinates?.lat?.toString() ?? "");
-    setLngStr(p.birthCoordinates?.lng?.toString() ?? "");
-    setDeathLatStr(p.deathCoordinates?.lat?.toString() ?? "");
-    setDeathLngStr(p.deathCoordinates?.lng?.toString() ?? "");
-    setSelParents(p.parentIds ?? []);
-    setSelPartners(p.partnerIds ?? []);
-    // Initialize marriage forms for each partner
-    const mf: typeof marriageForms = {};
-    for (const pid of p.partnerIds ?? []) {
-      const m = marriages.find(
-        (mar) => mar.partnerIds.includes(p.id) && mar.partnerIds.includes(pid)
-      );
-      mf[pid] = {
-        date: m?.date ?? "", place: m?.place ?? "", placeDisplay: m?.placeDisplay ?? "",
-        city: m?.city ?? "", countryCode: m?.countryCode ?? "", country: m?.country ?? "",
-        postcode: m?.postcode ?? "", county: m?.county ?? "", deptCode: m?.deptCode ?? "",
-      };
-    }
-    setMarriageForms(mf);
-    setEditingId(p.id);
-  };
-
   const set = (key: string, value: unknown) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -152,7 +150,6 @@ mf[pid] = {
       latStr && lngStr
         ? { lat: parseFloat(latStr), lng: parseFloat(lngStr) }
         : undefined;
-
     const deathCoords =
       deathLatStr && deathLngStr
         ? { lat: parseFloat(deathLatStr), lng: parseFloat(deathLngStr) }
@@ -189,7 +186,6 @@ mf[pid] = {
       parentIds: selParents.length > 0 ? selParents : undefined,
       partnerIds: selPartners.length > 0 ? selPartners : undefined,
     });
-    // Save marriage data for each partner
     for (const pid of selPartners) {
       const mf = marriageForms[pid];
       if (mf && (mf.date || mf.place)) {
@@ -209,40 +205,38 @@ mf[pid] = {
     setEditingId(null);
   };
 
-  // ── Edit mode ───────────────────────────────────
+  // ── Edit mode ─────────────────────────────────────────────────
   if (editing) {
     const otherPeople = people.filter((pp) => pp.id !== p.id);
 
     return (
-      <div style={panelStyle}>
+      <div className="panel">
         <button
+          className="iconclose panel__close"
           onClick={() => setEditingId(null)}
-          style={closeBtnStyle}
           title={t("detail.cancel")}
         >
           ✕
         </button>
 
-        <h2 style={{ margin: "0 0 16px", fontSize: 18, color: "#1e293b" }}>
-          {t("detail.editPerson")}
-        </h2>
+        <h2 style={{ marginBottom: 16 }}>{t("detail.editPerson")}</h2>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={editRowStyle}>
-            <EditField label={t("detail.firstName")} value={(form.firstName as string) ?? ""} onChange={(v) => set("firstName", v)} />
-            <EditField label={t("detail.lastName")} value={(form.lastName as string) ?? ""} onChange={(v) => set("lastName", v)} />
+        <div className="form">
+          <div className="form__row">
+            <Edit label={t("detail.firstName")} value={(form.firstName as string) ?? ""} onChange={(v) => set("firstName", v)} />
+            <Edit label={t("detail.lastName")} value={(form.lastName as string) ?? ""} onChange={(v) => set("lastName", v)} />
           </div>
 
-          <EditField label={t("detail.middleNames")} value={(form.middleNames as string) ?? ""} onChange={(v) => set("middleNames", v)} />
+          <Edit label={t("detail.middleNames")} value={(form.middleNames as string) ?? ""} onChange={(v) => set("middleNames", v)} />
 
-          <div style={editRowStyle}>
-            <EditField label={t("detail.maidenName")} value={(form.maidenName as string) ?? ""} onChange={(v) => set("maidenName", v)} />
-            <div style={{ flex: 1 }}>
-              <label style={editLabelStyle}>{t("detail.gender")}</label>
+          <div className="form__row">
+            <Edit label={t("detail.maidenName")} value={(form.maidenName as string) ?? ""} onChange={(v) => set("maidenName", v)} />
+            <div className="field">
+              <label className="field__label">{t("detail.gender")}</label>
               <select
+                className="field__select"
                 value={(form.gender as string) ?? ""}
                 onChange={(e) => set("gender", e.target.value || undefined)}
-                style={editInputStyle}
               >
                 <option value="">—</option>
                 <option value="male">{t("detail.genderMale")}</option>
@@ -251,9 +245,9 @@ mf[pid] = {
             </div>
           </div>
 
-          <div style={editRowStyle}>
-            <EditField label={t("detail.birthDate")} value={(form.birthDate as string) ?? ""} onChange={(v) => set("birthDate", v)} placeholder={t("detail.birthDatePlaceholder")} />
-            <EditField label={t("detail.deathDate")} value={(form.deathDate as string) ?? ""} onChange={(v) => set("deathDate", v)} placeholder={t("detail.deathDatePlaceholder")} />
+          <div className="form__row">
+            <Edit label={t("detail.birthDate")} value={(form.birthDate as string) ?? ""} onChange={(v) => set("birthDate", v)} placeholder={t("detail.birthDatePlaceholder")} />
+            <Edit label={t("detail.deathDate")} value={(form.deathDate as string) ?? ""} onChange={(v) => set("deathDate", v)} placeholder={t("detail.deathDatePlaceholder")} />
           </div>
 
           <PlaceAutocomplete
@@ -272,16 +266,14 @@ mf[pid] = {
               set("birthDeptCode", place.deptCode || "");
             }}
             placeholder={t("detail.searchPlaceholder")}
-            inputStyle={editInputStyle}
-            labelStyle={editLabelStyle}
           />
 
-          <div style={editRowStyle}>
-            <EditField label={t("detail.birthLat")} value={latStr} onChange={setLatStr} placeholder={t("detail.latPlaceholder")} />
-            <EditField label={t("detail.birthLng")} value={lngStr} onChange={setLngStr} placeholder={t("detail.lngPlaceholder")} />
+          <div className="form__row">
+            <Edit label={t("detail.birthLat")} value={latStr} onChange={setLatStr} placeholder={t("detail.latPlaceholder")} />
+            <Edit label={t("detail.birthLng")} value={lngStr} onChange={setLngStr} placeholder={t("detail.lngPlaceholder")} />
           </div>
 
-          <EditField label={t("detail.birthPlaceDisplay")} value={(form.birthPlaceDisplay as string) ?? ""} onChange={(v) => set("birthPlaceDisplay", v)} placeholder={t("detail.historicalName")} />
+          <Edit label={t("detail.birthPlaceDisplay")} value={(form.birthPlaceDisplay as string) ?? ""} onChange={(v) => set("birthPlaceDisplay", v)} placeholder={t("detail.historicalName")} />
 
           <PlaceAutocomplete
             label={t("detail.deathPlace")}
@@ -299,25 +291,23 @@ mf[pid] = {
               set("deathDeptCode", place.deptCode || "");
             }}
             placeholder={t("detail.searchPlaceholder")}
-            inputStyle={editInputStyle}
-            labelStyle={editLabelStyle}
           />
 
-          <EditField label={t("detail.deathPlaceDisplay")} value={(form.deathPlaceDisplay as string) ?? ""} onChange={(v) => set("deathPlaceDisplay", v)} placeholder={t("detail.historicalName")} />
+          <Edit label={t("detail.deathPlaceDisplay")} value={(form.deathPlaceDisplay as string) ?? ""} onChange={(v) => set("deathPlaceDisplay", v)} placeholder={t("detail.historicalName")} />
 
-          <EditField label={t("detail.occupation")} value={(form.occupation as string) ?? ""} onChange={(v) => set("occupation", v)} />
+          <Edit label={t("detail.occupation")} value={(form.occupation as string) ?? ""} onChange={(v) => set("occupation", v)} />
 
-          {/* Parent selection */}
-          <div>
-            <label style={editLabelStyle}>{t("detail.parentsUpTo2")}</label>
+          <div className="field">
+            <label className="field__label">{t("detail.parentsUpTo2")}</label>
             <select
+              className="field__select"
               multiple
               value={selParents}
               onChange={(e) => {
                 const vals = Array.from(e.target.selectedOptions, (o) => o.value);
                 if (vals.length <= 2) setSelParents(vals);
               }}
-              style={{ ...editInputStyle, height: 72 }}
+              style={{ height: 72 }}
             >
               {otherPeople.map((pp) => (
                 <option key={pp.id} value={pp.id}>
@@ -327,34 +317,42 @@ mf[pid] = {
             </select>
           </div>
 
-          {/* Partner selection */}
-          <div>
-            <label style={editLabelStyle}>{t("detail.partners")}</label>
+          <div className="field">
+            <label className="field__label">{t("detail.partners")}</label>
             <select
+              className="field__select"
               multiple
               value={selPartners}
               onChange={(e) => {
                 const vals = Array.from(e.target.selectedOptions, (o) => o.value);
                 setSelPartners(vals);
-                // Initialize marriage form for newly added partners
                 setMarriageForms((prev) => {
                   const next = { ...prev };
                   for (const pid of vals) {
                     if (!next[pid]) {
                       const m = marriages.find(
-                        (mar) => mar.partnerIds.includes(p.id) && mar.partnerIds.includes(pid)
+                        (mar) =>
+                          mar.partnerIds.includes(p.id) &&
+                          mar.partnerIds.includes(pid)
                       );
                       next[pid] = {
-                        date: m?.date ?? "", place: m?.place ?? "", placeDisplay: m?.placeDisplay ?? "",
-                        city: m?.city ?? "", countryCode: m?.countryCode ?? "", country: m?.country ?? "",
-                        postcode: m?.postcode ?? "", county: m?.county ?? "", deptCode: m?.deptCode ?? "",
+                        ...emptyMarriageForm(),
+                        date: m?.date ?? "",
+                        place: m?.place ?? "",
+                        placeDisplay: m?.placeDisplay ?? "",
+                        city: m?.city ?? "",
+                        countryCode: m?.countryCode ?? "",
+                        country: m?.country ?? "",
+                        postcode: m?.postcode ?? "",
+                        county: m?.county ?? "",
+                        deptCode: m?.deptCode ?? "",
                       };
                     }
                   }
                   return next;
                 });
               }}
-              style={{ ...editInputStyle, height: 72 }}
+              style={{ height: 72 }}
             >
               {otherPeople.map((pp) => (
                 <option key={pp.id} value={pp.id}>
@@ -364,32 +362,20 @@ mf[pid] = {
             </select>
           </div>
 
-          {/* Marriage details per partner */}
           {selPartners.length > 0 && (
-            <div>
-              <label style={editLabelStyle}>{t("detail.marriageDetails")}</label>
+            <div className="field">
+              <label className="field__label">{t("detail.marriageDetails")}</label>
               {selPartners.map((pid) => {
                 const partner = getPersonById(pid);
-                const mf = marriageForms[pid] ?? {
-                  date: "", place: "", placeDisplay: "",
-                  city: "", countryCode: "", country: "",
-                  postcode: "", county: "", deptCode: "",
-                };
+                const mf = marriageForms[pid] ?? emptyMarriageForm();
                 return (
-                  <div
-                    key={pid}
-                    style={{
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 6,
-                      padding: "8px 10px",
-                      marginBottom: 6,
-                      background: "#fef2f2",
-                    }}
-                  >
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#9f1239", marginBottom: 6 }}>
-                      {t("detail.marriageWith", { name: partner ? formatName(partner) : pid })}
+                  <div key={pid} className="subcard" style={{ marginBottom: 6 }}>
+                    <div className="subcard__title">
+                      {t("detail.marriageWith", {
+                        name: partner ? formatName(partner) : pid,
+                      })}
                     </div>
-                    <EditField
+                    <Edit
                       label={t("detail.marriageDate")}
                       value={mf.date}
                       onChange={(v) =>
@@ -426,12 +412,10 @@ mf[pid] = {
                           }));
                         }}
                         placeholder={t("detail.searchPlaceholder")}
-                        inputStyle={editInputStyle}
-                        labelStyle={editLabelStyle}
                       />
                     </div>
-                    <div style={{ marginTop: 4 }}>
-                      <EditField
+                    <div style={{ marginTop: 6 }}>
+                      <Edit
                         label={t("detail.placeDisplayName")}
                         value={mf.placeDisplay}
                         onChange={(v) =>
@@ -449,20 +433,20 @@ mf[pid] = {
             </div>
           )}
 
-          <div>
-            <label style={editLabelStyle}>{t("detail.notes")}</label>
+          <div className="field">
+            <label className="field__label">{t("detail.notes")}</label>
             <textarea
+              className="field__textarea"
               value={(form.notes as string) ?? ""}
               onChange={(e) => set("notes", e.target.value)}
-              style={{ ...editInputStyle, height: 60, resize: "vertical" }}
             />
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button onClick={handleSave} style={saveBtnStyle}>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button className="btn btn--primary" onClick={handleSave}>
               {t("detail.save")}
             </button>
-            <button onClick={() => setEditingId(null)} style={cancelBtnStyle}>
+            <button className="btn" onClick={() => setEditingId(null)}>
               {t("detail.cancel")}
             </button>
           </div>
@@ -471,104 +455,96 @@ mf[pid] = {
     );
   }
 
-  // ── View mode ───────────────────────────────────
+  // ── View mode ─────────────────────────────────────────────────
   return (
-    <div style={panelStyle}>
-      {/* Close button */}
+    <div className="panel">
       <button
+        className="iconclose panel__close"
         onClick={() => selectPerson(null)}
-        style={closeBtnStyle}
         title={t("detail.close")}
       >
         ✕
       </button>
 
-      {/* Header */}
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20, color: "#1e293b" }}>
-          {formatName(p)}
-        </h2>
-        {p.maidenName && (
-          <div style={{ fontSize: 13, color: "#64748b" }}>
-            {t("detail.nee")} {p.maidenName}
-          </div>
-        )}
+      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+        {p.photo && <img className="panel__portrait" src={p.photo} alt="" />}
+        <div>
+          <h2 className="panel__name">{formatName(p)}</h2>
+          {p.maidenName && (
+            <div className="panel__sub">
+              {t("detail.nee")} {p.maidenName}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Info rows */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {p.middleNames && <InfoRow label={t("detail.middleNames")} value={p.middleNames} />}
-        {p.gender && <InfoRow label={t("detail.gender")} value={p.gender === "male" ? t("detail.genderMale") : t("detail.genderFemale")} />}
-        {p.birthDate && <InfoRow label={t("detail.born")} value={formatDate(p.birthDate, months)} />}
-        {p.birthPlace && <InfoRow label={t("detail.birthPlace")} value={p.birthPlaceDisplay || p.birthPlace} />}
-        {p.deathDate && <InfoRow label={t("detail.died")} value={formatDate(p.deathDate, months)} />}
-        {p.deathPlace && <InfoRow label={t("detail.deathPlace")} value={p.deathPlaceDisplay || p.deathPlace} />}
-        {p.occupation && <InfoRow label={t("detail.occupation")} value={p.occupation} />}
+      <div>
+        {p.middleNames && <Info k={t("detail.middleNames")} v={p.middleNames} />}
+        {p.gender && (
+          <Info
+            k={t("detail.gender")}
+            v={p.gender === "male" ? t("detail.genderMale") : t("detail.genderFemale")}
+          />
+        )}
+        {p.birthDate && <Info k={t("detail.born")} v={formatDate(p.birthDate, months)} />}
+        {p.birthPlace && (
+          <Info k={t("detail.birthPlace")} v={p.birthPlaceDisplay || p.birthPlace} />
+        )}
+        {p.deathDate && <Info k={t("detail.died")} v={formatDate(p.deathDate, months)} />}
+        {p.deathPlace && (
+          <Info k={t("detail.deathPlace")} v={p.deathPlaceDisplay || p.deathPlace} />
+        )}
+        {p.occupation && <Info k={t("detail.occupation")} v={p.occupation} />}
 
         {parents.length > 0 && (
-          <RelationRow
-            label={t("detail.parents")}
-            people={parents}
-            onSelect={handleRelationClick}
-          />
+          <Relations label={t("detail.parents")} people={parents} onSelect={handleRelationClick} />
         )}
+
         {partners.length > 0 && (
-          <div>
-            <span style={labelStyle}>{t("detail.partnersLabel")} </span>
-            {partners.map((partner, i) => {
-              const m = marriages.find(
-                (mar) =>
-                  mar.partnerIds.includes(p.id) &&
-                  mar.partnerIds.includes(partner.id)
-              );
-              return (
-                <div key={partner.id} style={{ marginTop: i > 0 ? 4 : 0 }}>
-                  <button
-                    onClick={() => handleRelationClick(partner.id)}
-                    style={linkBtnStyle}
-                  >
-                    {formatName(partner)}
-                  </button>
-                  {(m?.date || m?.place) && (() => {
-                    const displayCity = m?.placeDisplay || m?.city;
-                    let placeLabel: string | undefined;
-                    if (displayCity && m?.countryCode) {
-                      if (m.countryCode === "fr") {
-                        placeLabel = m.deptCode ? `${displayCity} (${m.deptCode})` : displayCity;
-                      } else {
-                        placeLabel = `${displayCity} (${m.country || m.countryCode.toUpperCase()})`;
-                      }
-                    } else if (m?.place) {
-                      const c = m.place.indexOf(",");
-                      placeLabel = c > 0 ? m.place.substring(0, c).trim() : m.place;
-                    }
-                    return (
-                      <span style={{ fontSize: 12, color: "#9f1239", marginLeft: 6 }}>
-                        💍 {m?.date ? formatDate(m.date, months) : ""}{m?.date && placeLabel ? " · " : ""}{placeLabel ?? ""}
+          <div className="inforow">
+            <span className="inforow__k">{t("detail.partnersLabel")}</span>
+            <span className="inforow__v">
+              {partners.map((partner, i) => {
+                const m = marriages.find(
+                  (mar) =>
+                    mar.partnerIds.includes(p.id) &&
+                    mar.partnerIds.includes(partner.id)
+                );
+                const placeLabel = m ? formatMarriagePlace(m) : undefined;
+                return (
+                  <div key={partner.id} style={{ marginTop: i > 0 ? 4 : 0 }}>
+                    <button className="link" onClick={() => handleRelationClick(partner.id)}>
+                      {formatName(partner)}
+                    </button>
+                    {(m?.date || placeLabel) && (
+                      <span className="marriage-note">
+                        💍 {m?.date ? formatDate(m.date, months) : ""}
+                        {m?.date && placeLabel ? " · " : ""}
+                        {placeLabel ?? ""}
                       </span>
-                    );
-                  })()}
-                </div>
-              );
-            })}
+                    )}
+                  </div>
+                );
+              })}
+            </span>
           </div>
         )}
+
         {children.length > 0 && (
-          <RelationRow
-            label={t("detail.children")}
-            people={children}
-            onSelect={handleRelationClick}
-          />
+          <Relations label={t("detail.children")} people={children} onSelect={handleRelationClick} />
         )}
 
         {p.notes && (
-          <div style={{ marginTop: 8 }}>
-            <div style={labelStyle}>{t("detail.notes")}</div>
+          <div style={{ marginTop: 12 }}>
+            <div className="section-label" style={{ marginBottom: 4 }}>
+              {t("detail.notes")}
+            </div>
             <div
               style={{
                 fontSize: 13,
-                color: "#475569",
+                color: "var(--ink-soft)",
                 whiteSpace: "pre-wrap",
+                fontFamily: "var(--font-serif)",
               }}
             >
               {p.notes}
@@ -577,193 +553,73 @@ mf[pid] = {
         )}
       </div>
 
-      {/* Documents */}
       <DocumentGallery personId={p.id} />
 
-      {/* Actions */}
       {isEditor && (
-      <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
-        <button onClick={startEditing} style={editBtnStyle}>
-          {t("detail.edit")}
-        </button>
-        <button
-          onClick={() => {
-            if (confirm(t("detail.confirmRemove", { name: formatName(p) }))) {
-              removePerson(p.id);
-            }
-          }}
-          style={deleteBtnStyle}
-        >
-          {t("detail.remove")}
-        </button>
-      </div>
+        <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
+          <button className="btn btn--soft" onClick={() => loadPerson(p)}>
+            {t("detail.edit")}
+          </button>
+          <button
+            className="btn btn--danger"
+            onClick={() => {
+              if (confirm(t("detail.confirmRemove", { name: formatName(p) }))) {
+                removePerson(p.id);
+              }
+            }}
+          >
+            {t("detail.remove")}
+          </button>
+        </div>
       )}
     </div>
   );
 };
 
-// ── Edit sub-components ─────────────────────────
-const EditField: React.FC<{
+const Edit: React.FC<{
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
 }> = ({ label, value, onChange, placeholder }) => (
-  <div style={{ flex: 1 }}>
-    <label style={editLabelStyle}>{label}</label>
+  <div className="field">
+    <label className="field__label">{label}</label>
     <input
+      className="field__input"
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      style={editInputStyle}
     />
   </div>
 );
 
-const InfoRow: React.FC<{ label: string; value: string }> = ({
-  label,
-  value,
-}) => (
-  <div>
-    <span style={labelStyle}>{label}: </span>
-    <span style={{ fontSize: 13, color: "#334155" }}>{value}</span>
+const Info: React.FC<{ k: string; v: string }> = ({ k, v }) => (
+  <div className="inforow">
+    <span className="inforow__k">{k}</span>
+    <span className="inforow__v">{v}</span>
   </div>
 );
 
-const RelationRow: React.FC<{
+const Relations: React.FC<{
   label: string;
   people: Person[];
   onSelect: (id: string) => void;
 }> = ({ label, people, onSelect }) => (
-  <div>
-    <span style={labelStyle}>{label}: </span>
-    {people.map((person, i) => (
-      <React.Fragment key={person.id}>
-        {i > 0 && ", "}
-        <button onClick={() => onSelect(person.id)} style={linkBtnStyle}>
-          {[person.firstName, person.lastName].filter(Boolean).join(" ") ||
-            person.id}
-        </button>
-      </React.Fragment>
-    ))}
+  <div className="inforow">
+    <span className="inforow__k">{label}</span>
+    <span className="inforow__v">
+      {people.map((person, i) => (
+        <React.Fragment key={person.id}>
+          {i > 0 && ", "}
+          <button className="link" onClick={() => onSelect(person.id)}>
+            {[person.firstName, person.lastName].filter(Boolean).join(" ") ||
+              person.id}
+          </button>
+        </React.Fragment>
+      ))}
+    </span>
   </div>
 );
-
-// ── Styles ──────────────────────────────────────
-const panelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 0,
-  right: 0,
-  width: 340,
-  height: "100%",
-  background: "white",
-  borderLeft: "1px solid #e2e8f0",
-  padding: "24px 20px",
-  overflowY: "auto",
-  zIndex: 1000,
-  fontFamily: "'Inter', system-ui, sans-serif",
-  boxShadow: "-4px 0 12px rgba(0,0,0,0.06)",
-};
-
-const closeBtnStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 12,
-  right: 12,
-  background: "none",
-  border: "none",
-  fontSize: 18,
-  cursor: "pointer",
-  color: "#94a3b8",
-  padding: 4,
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: "#94a3b8",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-
-const linkBtnStyle: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  color: "#3b82f6",
-  cursor: "pointer",
-  fontSize: 13,
-  padding: 0,
-  textDecoration: "underline",
-};
-
-const editBtnStyle: React.CSSProperties = {
-  padding: "6px 14px",
-  background: "#dbeafe",
-  color: "#2563eb",
-  border: "1px solid #93c5fd",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 500,
-};
-
-const deleteBtnStyle: React.CSSProperties = {
-  padding: "6px 14px",
-  background: "#fee2e2",
-  color: "#dc2626",
-  border: "1px solid #fca5a5",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 500,
-};
-
-const editRowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-};
-
-const editLabelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
-  marginBottom: 3,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-
-const editInputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "6px 8px",
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  fontSize: 13,
-  color: "#1e293b",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const saveBtnStyle: React.CSSProperties = {
-  padding: "7px 18px",
-  background: "#3b82f6",
-  color: "white",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
-};
-
-const cancelBtnStyle: React.CSSProperties = {
-  padding: "7px 18px",
-  background: "#f1f5f9",
-  color: "#64748b",
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 500,
-};
 
 export default DetailPanel;
