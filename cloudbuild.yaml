@@ -28,7 +28,7 @@ steps:
         "--region",
         "${_REGION}",
         "--allow-unauthenticated",
-        "--set-env-vars",
+        "--update-env-vars",
         "GCS_BUCKET=${_GCS_BUCKET}",
       ]
 

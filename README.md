@@ -9,7 +9,7 @@ Interactive family tree viewer with a birth map.
 - **Detail Panel** — Slide-out panel showing all available info. Click relatives to navigate.
 - **Add / Remove** — Add people via a form; remove from the detail panel.
 - **Flexible data** — All fields optional except `id`. Handles missing data gracefully.
-- **Persistent** — Data stored in `localStorage`; survives page reloads.
+- **Persistent** — Data stored as JSON files by the API (Google Cloud Storage in production).
 
 ## Quick Start
 
@@ -69,8 +69,16 @@ People are stored as a flat JSON array. Each person looks like this:
 }
 ```
 
-Edit `src/data/sampleData.ts` to replace the example family with your own.
-Data is loaded from localStorage on return visits; clear it to reload from the file.
+Each tree is one `<treeId>.json` file (`{ id, name, people, marriages }`) in the
+storage bucket; documents live under `docs/<personId>/`.
+
+## Backups
+
+The production bucket is the source of truth. Snapshot it before any data work:
+
+```bash
+npm run backup:prod   # → backups/prod-<timestamp>/ (git-ignored)
+```
 
 ## Tech Stack
 

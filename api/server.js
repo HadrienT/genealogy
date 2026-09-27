@@ -152,6 +152,7 @@ async function listAllTrees() {
   const trees = [];
   for (const file of files) {
     if (!file.name.endsWith(".json")) continue;
+    if (file.name.startsWith("_")) continue; // _users.json etc. are not trees
     try {
       const [content] = await file.download();
       const data = JSON.parse(content.toString("utf-8"));
