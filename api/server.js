@@ -381,9 +381,12 @@ app.get("/api/persons/:personId/documents/:docId", authenticate, async (req, res
     // Viewers: always inline (no download). Editors: inline by default, download if ?download=1
     const isEditor = req.user?.role === "editor";
     const wantsDownload = req.query.download === "1" && isEditor;
-    const disposition = wantsDownload
-      ? `attachment; filename="${doc.name}"`
-      : `inline; filename="${doc.name}"`;
+    // Header values must be ASCII: give an ASCII fallback plus the real
+    // (accented) name RFC 6266-encoded, e.g. "acte de décès.pdf".
+    const asciiName = doc.name.normalize("NFD").replace(/[^\x20-\x7e]/g, "").replace(/["\\]/g, "");
+    const disposition =
+      `${wantsDownload ? "attachment" : "inline"}; filename="${asciiName}"; ` +
+      `filename*=UTF-8''${encodeURIComponent(doc.name)}`;
 
     res.setHeader("Content-Type", doc.mimeType);
     res.setHeader("Content-Disposition", disposition);

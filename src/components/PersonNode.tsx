@@ -8,6 +8,12 @@ const genderClass: Record<string, string> = {
   other: "pnode--other",
 };
 
+const reviewBadge: Record<string, string> = {
+  new: "✦",
+  updated: "✎",
+  conflict: "!",
+};
+
 const PersonNode = ({ data }: NodeProps) => {
   const d = data as PersonNodeData;
   const cls = [
@@ -15,6 +21,8 @@ const PersonNode = ({ data }: NodeProps) => {
     genderClass[d.gender ?? ""] ?? "",
     d.selected ? "pnode--selected" : "",
     d.deceased ? "pnode--deceased" : "",
+    d.review ? `pnode--review pnode--review-${d.review}` : "",
+    d.uncertain ? "pnode--uncertain" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -22,6 +30,7 @@ const PersonNode = ({ data }: NodeProps) => {
   return (
     <div className={cls}>
       <Handle type="target" position={Position.Top} id="t" />
+      {d.review && <span className="pnode__badge">{reviewBadge[d.review]}</span>}
       {d.person.photo && (
         <img className="pnode__portrait" src={d.person.photo} alt="" />
       )}

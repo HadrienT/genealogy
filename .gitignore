@@ -25,6 +25,8 @@ data/trees/
 api/.localdata/
 # Snapshots of the production bucket (scripts/backup-prod.sh) — real family data, never commit
 backups/
+# Local draft trees (imports to review before they go to production) — real family data, never commit
+drafts/
 *.suo
 *.ntvs*
 *.njsproj

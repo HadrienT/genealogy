@@ -41,6 +41,21 @@ const translations = {
   "tree.parentChild": { en: "Parent → Child", fr: "Parent → Enfant" },
   "tree.siblings": { en: "Siblings", fr: "Fratrie" },
   "tree.partnerMarriage": { en: "Partner / Marriage", fr: "Conjoint / Mariage" },
+  "tree.reviewNew": { en: "New (to review)", fr: "Nouveau (à relire)" },
+  "tree.reviewUpdated": { en: "Completed (to review)", fr: "Complété (à relire)" },
+  "tree.reviewConflict": { en: "Conflict", fr: "Divergence" },
+  "tree.reviewUncertain": { en: "Inferred link", fr: "Lien déduit" },
+
+  // Import review
+  "review.pending": { en: "{n} to review", fr: "{n} à relire" },
+  "review.new": { en: "New person", fr: "Nouvelle personne" },
+  "review.updated": { en: "Completed by the import", fr: "Complétée par l'import" },
+  "review.conflict": { en: "Conflicting value", fr: "Valeur divergente" },
+  "review.kept": { en: "kept", fr: "conservé" },
+  "review.proposed": { en: "paper tree says", fr: "le tableau indique" },
+  "review.sources": { en: "Source photos", fr: "Photos sources" },
+  "review.next": { en: "Next to review → ({n})", fr: "Suivant à relire → ({n})" },
+  "review.validate": { en: "✓ Mark as reviewed", fr: "✓ Marquer comme relu" },
 
   // MapView
   "map.birth": { en: "Birth", fr: "Naissance" },

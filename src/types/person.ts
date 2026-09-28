@@ -10,6 +10,29 @@
  *  - Coordinates are stored directly on the person for the birth map.
  */
 
+/** One field touched by an import (e.g. transcription of a paper tree). */
+export interface ReviewChange {
+  field: string;
+  before?: string;
+  after?: string;
+  /** The import disagrees with the existing value, which was kept. */
+  conflict?: boolean;
+}
+
+/**
+ * Pending-review marker set by an import on a draft tree. The UI highlights
+ * these people until an editor validates them (which deletes the marker).
+ */
+export interface PersonReview {
+  status: "new" | "updated" | "conflict";
+  /** Source file names (photos of the paper tree). */
+  sources?: string[];
+  notes?: string[];
+  changes?: ReviewChange[];
+  /** A link was inferred from the layout rather than read explicitly. */
+  uncertain?: boolean;
+}
+
 export interface Person {
   id: string;
 
@@ -62,6 +85,9 @@ export interface Person {
   // ── Freeform ──────────────────────────────────
   occupation?: string;
   notes?: string;
+
+  // ── Import review (draft trees only) ──────────
+  review?: PersonReview;
 }
 
 export interface Marriage {
