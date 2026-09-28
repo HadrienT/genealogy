@@ -27,6 +27,7 @@ const AppContent: React.FC = () => {
     renameTree,
     loadingTree,
   } = useFamily();
+  const reviewCount = people.filter((p) => p.review).length;
   const [selectorOpen, setSelectorOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
 
@@ -144,6 +145,11 @@ const AppContent: React.FC = () => {
           <span className="chip">
             {people.length} {t("app.people")}
           </span>
+          {reviewCount > 0 && (
+            <span className="chip chip--review">
+              {t("review.pending", { n: String(reviewCount) })}
+            </span>
+          )}
         </div>
 
         <nav style={{ display: "flex", gap: 10, alignItems: "center" }}>

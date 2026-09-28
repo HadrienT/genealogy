@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect, useState } from "react";
+import React, { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -7,13 +7,14 @@ import {
   useNodesState,
   useEdgesState,
   type NodeMouseHandler,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import { useI18n } from "../hooks/useI18n";
 import { useAuth } from "../hooks/useAuth";
 import { useFamily } from "../hooks/useFamily";
-import { buildTreeLayout, type PersonNodeData } from "../utils/treeLayout";
+import { buildTreeLayout, NODE_W, NODE_H, type PersonNodeData } from "../utils/treeLayout";
 import PersonNode from "./PersonNode";
 import UnionNode from "./UnionNode";
 import AddPersonForm from "./AddPersonForm";
@@ -21,8 +22,14 @@ import AddPersonForm from "./AddPersonForm";
 const nodeTypes = { person: PersonNode, union: UnionNode };
 
 const TreeView: React.FC = () => {
-  const { people, selectPerson, marriages, getPersonById, requestEditPerson } =
-    useFamily();
+  const {
+    people,
+    selectPerson,
+    selectedPersonId,
+    marriages,
+    getPersonById,
+    requestEditPerson,
+  } = useFamily();
   const { t, months } = useI18n();
   const { isEditor } = useAuth();
 
@@ -36,6 +43,37 @@ const TreeView: React.FC = () => {
     childId: string;
     partnerIds: string[];
   } | null>(null);
+
+  const reviewIds = useMemo(
+    () => people.filter((p) => p.review).map((p) => p.id),
+    [people]
+  );
+  const hasReview = reviewIds.length > 0;
+
+  // Center the canvas on a person selected from outside it (detail panel
+  // links, "next to review"), but not on plain clicks inside the canvas.
+  const [rf, setRf] = useState<ReactFlowInstance | null>(null);
+  const clickedInCanvas = useRef(false);
+  useEffect(() => {
+    if (!rf || !selectedPersonId) return;
+    if (clickedInCanvas.current) {
+      clickedInCanvas.current = false;
+      return;
+    }
+    const n = rf.getNode(selectedPersonId);
+    if (!n) return;
+    rf.setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, {
+      zoom: Math.max(rf.getZoom(), 0.9),
+      duration: 400,
+    });
+  }, [rf, selectedPersonId]);
+
+  const goNextReview = useCallback(() => {
+    const i = reviewIds.indexOf(selectedPersonId ?? "");
+    const id = reviewIds[(i + 1) % reviewIds.length];
+    setSelectedIds([id]);
+    selectPerson(id);
+  }, [reviewIds, selectedPersonId, selectPerson]);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
     () => buildTreeLayout(people, marriages, months),
@@ -78,11 +116,12 @@ const TreeView: React.FC = () => {
         });
       } else {
         setSelectedIds([node.id]);
+        clickedInCanvas.current = node.id !== selectedPersonId;
         selectPerson(node.id);
       }
       setContextMenu(null);
     },
-    [selectPerson]
+    [selectPerson, selectedPersonId]
   );
 
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
@@ -157,6 +196,7 @@ const TreeView: React.FC = () => {
         onNodeDoubleClick={onNodeDoubleClick}
         onNodeContextMenu={onNodeContextMenu}
         onPaneClick={handlePaneClick}
+        onInit={setRf}
         fitView
         fitViewOptions={{ padding: 0.25 }}
         minZoom={0.05}
@@ -171,6 +211,10 @@ const TreeView: React.FC = () => {
           maskColor="rgba(243,234,214,0.6)"
           nodeColor={(node) => {
             if (node.type === "union") return "#9c3b4e";
+            const r = (node.data as PersonNodeData).review;
+            if (r === "new") return "#b1832f";
+            if (r === "updated") return "#3f6b4c";
+            if (r === "conflict") return "#a63a2b";
             const g = (node.data as { gender?: string }).gender;
             if (g === "male") return "#3c6478";
             if (g === "female") return "#9c3b4e";
@@ -179,6 +223,12 @@ const TreeView: React.FC = () => {
           }}
         />
       </ReactFlow>
+
+      {hasReview && (
+        <button className="btn btn--primary review-next" onClick={goNextReview}>
+          {t("review.next", { n: String(reviewIds.length) })}
+        </button>
+      )}
 
       {contextMenu && selectedIds.length > 0 && (
         <div
@@ -267,6 +317,32 @@ const TreeView: React.FC = () => {
           </svg>
           {t("tree.partnerMarriage")}
         </div>
+        {hasReview && (
+          <>
+            {(
+              [
+                ["var(--gold)", "tree.reviewNew"],
+                ["var(--forest)", "tree.reviewUpdated"],
+                ["var(--danger)", "tree.reviewConflict"],
+              ] as const
+            ).map(([color, key]) => (
+              <div className="legend__row" key={key}>
+                <span
+                  className="legend__swatch"
+                  style={{ background: "var(--card-raised)", borderColor: color, boxShadow: `0 0 6px ${color}` }}
+                />
+                {t(key)}
+              </div>
+            ))}
+            <div className="legend__row">
+              <span
+                className="legend__swatch"
+                style={{ borderStyle: "dashed", borderColor: "var(--gold)" }}
+              />
+              {t("tree.reviewUncertain")}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

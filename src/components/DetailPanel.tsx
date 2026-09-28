@@ -478,6 +478,45 @@ const DetailPanel: React.FC = () => {
         </div>
       </div>
 
+      {p.review && (
+        <div className={`review-box review-box--${p.review.status}`}>
+          <div className="review-box__title">{t(`review.${p.review.status}`)}</div>
+          {(p.review.changes?.length ?? 0) > 0 && (
+            <ul>
+              {p.review.changes!.map((c, i) => (
+                <li key={i}>
+                  <strong>{c.field}</strong> :{" "}
+                  {c.conflict
+                    ? `${c.before} (${t("review.kept")}) — ${t("review.proposed")} ${c.after}`
+                    : `${c.before ? `${c.before} → ` : ""}${c.after}`}
+                </li>
+              ))}
+            </ul>
+          )}
+          {(p.review.notes?.length ?? 0) > 0 && (
+            <ul>
+              {p.review.notes!.map((n, i) => (
+                <li key={i}>{n}</li>
+              ))}
+            </ul>
+          )}
+          {(p.review.sources?.length ?? 0) > 0 && (
+            <div className="review-box__sources">
+              {t("review.sources")} : {p.review.sources!.join(", ")}
+            </div>
+          )}
+          {isEditor && (
+            <button
+              className="btn btn--sm btn--soft"
+              style={{ marginTop: 8 }}
+              onClick={() => updatePerson(p.id, { review: undefined })}
+            >
+              {t("review.validate")}
+            </button>
+          )}
+        </div>
+      )}
+
       <div>
         {p.middleNames && <Info k={t("detail.middleNames")} v={p.middleNames} />}
         {p.gender && (

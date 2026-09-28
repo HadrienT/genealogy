@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "@xyflow/react";
-import type { Person, Marriage } from "../types/person";
+import type { Person, Marriage, PersonReview } from "../types/person";
 import { formatTreeBirthPlace } from "./formatTreeBirthPlace";
 import { formatMarriagePlace } from "./formatMarriagePlace";
 import { formatDate } from "./formatDate";
@@ -36,6 +36,8 @@ export interface PersonNodeData {
   gender?: string;
   deceased: boolean;
   selected: boolean;
+  review?: PersonReview["status"];
+  uncertain?: boolean;
   [key: string]: unknown;
 }
 
@@ -155,6 +157,8 @@ export function buildTreeLayout(
       gender: p.gender,
       deceased: !!p.deathDate,
       selected: false,
+      review: p.review?.status,
+      uncertain: p.review?.uncertain,
     };
     nodes.push({
       id: p.id,

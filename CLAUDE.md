@@ -28,7 +28,7 @@ L'utilisateur saisit ses données via le site en ligne, donc **la dernière vers
 - Pour travailler en local sur des données réelles : `cd api && LOCAL_DATA_DIR=../backups/prod-<horodatage> node server.js`. Le front peut réécrire l'arbre au chargement (backfill géocodage), donc mieux vaut travailler sur une copie de l'instantané.
 - Les écritures faites en local ne remontent **pas** en prod.
 
-Le versioning GCS est activé sur le bucket (et la suppression douce dure 7 jours). Chaque `PUT` crée une nouvelle version, qu'on peut lister avec `gcloud storage ls -a gs://quant-dev-442615-genealogy-data/<fichier>`. Une règle de cycle de vie purge les anciennes versions (au 27 sept. 2026, elle n'en gardait que 5 par fichier, soit quelques minutes d'édition). Les instantanés `backups/` restent le filet de sécurité principal.
+Le versioning GCS est activé sur le bucket (et la suppression douce dure 7 jours). Chaque `PUT` crée une nouvelle version, qu'on peut lister avec `gcloud storage ls -a gs://quant-dev-442615-genealogy-data/<fichier>`. Une règle de cycle de vie supprime les anciennes versions 90 jours après leur remplacement (depuis le 27 sept. 2026 ; avant, elle n'en gardait que 5). Les instantanés `backups/` restent le filet de sécurité principal.
 
 Organisation du bucket / dossier :
 
@@ -49,10 +49,21 @@ docs/<personId>/<docId>.<ext>      # fichiers (photos, PDF…) — jusqu'à 20 M
 
 Défini dans `src/types/person.ts`. Tout est optionnel sauf `id`.
 
-- Relations par ID, **stockées dans les deux sens** : `parentIds` ↔ `childrenIds`, `partnerIds` symétrique. Toute modification doit garder les deux côtés cohérents (voir `addPerson` / `removePerson` dans `src/hooks/useFamily.tsx`).
+- Relations par ID : `parentIds` ↔ `childrenIds`, `partnerIds` symétrique. En pratique, **la prod ne remplit souvent que `parentIds`** (et `childrenIds` reste vide) : l'affichage se base sur `parentIds`, et tout script qui cherche les enfants doit partir des `parentIds` des enfants. Les nouvelles écritures doivent garder les deux côtés cohérents (voir `addPerson` / `removePerson` dans `src/hooks/useFamily.tsx`).
 - Dates ISO partielles : `"1842"`, `"1842-03"`, `"1842-03-15"`.
 - Lieux : `birthPlace` (texte Nominatim complet), `birthPlaceDisplay` (nom historique affiché), `birthCoordinates`, plus des champs structurés `birthCity`, `birthCountryCode`, `birthCountry`, `birthPostcode`, `birthCounty`, `birthDeptCode` (idem pour `death*`, et sans préfixe pour `Marriage`).
+- `review` (optionnel) : marqueur « à relire » posé par un import sur un **arbre brouillon** (`status` new/updated/conflict, `sources` = photos, `notes`, `changes`, `uncertain`). L'app surligne ces cartes, les liste avec le bouton « Suivant à relire », et le bouton « Marquer comme relu » du panneau supprime le marqueur. Ce champ ne doit pas partir tel quel en prod.
 - Au chargement d'un arbre, `backfillAddressFields` géocode en inverse (Nominatim, 1 req/s) les personnes ayant des coordonnées sans ville, puis réenregistre l'arbre.
+
+## Brouillons d'import (`drafts/`, git-ignoré)
+
+Pour ajouter beaucoup de personnes (par exemple depuis des photos d'un arbre papier), on ne touche pas à la prod : on crée un **dossier de données local** avec un arbre brouillon, sous un id différent de l'arbre réel.
+
+- `drafts/photos-20260927/` : transcription des 42 photos `images/2026092*.jpg` de l'arbre papier des ascendants de Floranne BERNARD (768 nouvelles personnes). Il est construit à partir de l'instantané `backups/prod-20260927-215026`. Les photos sources sont dans `sources/`, rattachées à chaque personne comme documents.
+- `drafts/<nom>/_import/` : saisie brute (`ocr.dsl`, une ligne par personne et par union), scripts `merge.py` (rapprochement avec la prod, champs `review`) et `geo.py` (géocodage Nominatim en cache), et notes de lecture.
+- Lancer : `cd api && LOCAL_DATA_DIR=../drafts/photos-20260927 node server.js`, puis `npm run dev`. On se connecte avec les comptes habituels (`_users.json` est copié de la prod).
+- **Le brouillon photos est aussi en prod depuis le 28 sept. 2026**, comme arbre séparé `d7a1f0e2-….json` (« Tramoni — brouillon photos »), pour que l'utilisateur puisse le relire en ligne. C'est la version en ligne qui fait foi, pas le dossier local. Version envoyée : `drafts/photos-20260927-prod/`. Les 134 personnes reprises de la prod y ont des ids propres, `uuid5(NAMESPACE_URL, "genealogy-draft:photos-20260927:<idProd>")`, recalculables à la fusion (table dans `_import-idmap.json`, locale seulement). Leurs documents ne partagent donc rien avec l'arbre réel. Les photos sources sont dans `gs://…/sources/photos-20260927/` et sont partagées par plusieurs fiches : supprimer une de ces photos depuis une fiche la supprime pour toutes (la route DELETE efface le fichier `gcsPath`).
+- Reporter un brouillon relu vers la prod demande une fusion avec l'arbre de prod **à jour** (il a pu changer entre-temps), une sauvegarde préalable et l'accord explicite de l'utilisateur.
 
 ## Flux de sauvegarde
 
@@ -92,6 +103,7 @@ Vérifications : `npm run build` (inclut `tsc -b`) et `npm run lint`. Il n'y a p
 
 ## Points d'attention connus
 
-- La révision Cloud Run `genealogy-api-00010` (7 sept.) n'a jamais démarré, parce que le Dockerfile ne copiait pas `localBucket.js` (corrigé depuis). La prod tourne toujours sur la révision `00009`. Tout nouveau déploiement doit copier tous les `.js` dont `server.js` a besoin.
+- La révision Cloud Run `genealogy-api-00010` (7 sept.) n'a jamais démarré, parce que le Dockerfile ne copiait pas `localBucket.js`. C'est corrigé, et la révision `00013` a été déployée le 27 sept. Tout nouveau déploiement doit copier tous les `.js` dont `server.js` a besoin.
+- Les noms de documents avec accents ou caractères non ASCII faisaient échouer l'affichage (erreur 500 sur `Content-Disposition`). C'est corrigé dans `api/server.js` (encodage RFC 6266), mais il faut **redéployer l'API** pour que la prod en profite.
 - `JWT_SECRET` doit être défini comme variable d'environnement du service Cloud Run (il ne figure pas dans le repo). `cloudbuild.yaml` utilise `--update-env-vars` pour ne pas l'effacer à chaque déploiement : ne pas revenir à `--set-env-vars`, qui remplace toutes les variables. Sans ce secret, l'API utilise la valeur publique `dev-secret-change-me` et n'importe qui peut forger un jeton `editor`.
 - CORS autorise uniquement `hadrient.github.io` et localhost.
