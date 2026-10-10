@@ -1,25 +1,28 @@
 import React, { useMemo, useCallback, useEffect, useRef, useState } from "react";
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  MiniMap,
-  useNodesState,
-  useEdgesState,
-  type NodeMouseHandler,
-  type ReactFlowInstance,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
 
 import { useI18n } from "../hooks/useI18n";
 import { useAuth } from "../hooks/useAuth";
 import { useFamily } from "../hooks/useFamily";
-import { buildTreeLayout, NODE_W, NODE_H, type PersonNodeData } from "../utils/treeLayout";
-import PersonNode from "./PersonNode";
-import UnionNode from "./UnionNode";
+import { buildTreeLayout } from "../utils/treeLayout";
+import {
+  buildFamilyGraph,
+  computeFold,
+  defaultFocus,
+  pathBetween,
+  type FoldState,
+} from "../utils/treeFold";
+import TreeCanvas, { type TreeCanvasHandle } from "./TreeCanvas";
 import AddPersonForm from "./AddPersonForm";
 
-const nodeTypes = { person: PersonNode, union: UnionNode };
+/** Ancestor generations shown above the focus person when the tree opens. */
+const DEFAULT_GENS = 4;
+
+const foldTo = (gens: number): FoldState => ({
+  gens,
+  expanded: new Set(),
+  collapsed: new Set(),
+  pinned: new Set(),
+});
 
 const TreeView: React.FC = () => {
   const {
@@ -50,23 +53,48 @@ const TreeView: React.FC = () => {
   );
   const hasReview = reviewIds.length > 0;
 
-  // Center the canvas on a person selected from outside it (detail panel
-  // links, "next to review"), but not on plain clicks inside the canvas.
-  const [rf, setRf] = useState<ReactFlowInstance | null>(null);
+  // ── What is on the canvas: a focus person and the folded branches ──
+  const graph = useMemo(() => buildFamilyGraph(people), [people]);
+  const [focusChoice, setFocusChoice] = useState<string | null>(null);
+  const [fold, setFold] = useState<FoldState>(() => foldTo(DEFAULT_GENS));
+  const focusId = useMemo(
+    () => (focusChoice && graph.ids.has(focusChoice) ? focusChoice : defaultFocus(graph)),
+    [graph, focusChoice]
+  );
+  const { visible, hiddenAncestors } = useMemo(
+    () => computeFold(graph, focusId, fold),
+    [graph, focusId, fold]
+  );
+  const layout = useMemo(
+    () => buildTreeLayout(people, marriages, months, visible, hiddenAncestors),
+    [people, marriages, months, visible, hiddenAncestors]
+  );
+  const showingAll = visible.size >= people.length;
+
+  // A person selected while folded away (detail panel links, "next to
+  // review", the map) is brought onto the canvas with the people linking
+  // them to the focus person.
+  const [seenSelection, setSeenSelection] = useState<string | null>(null);
+  if (selectedPersonId !== seenSelection) {
+    setSeenSelection(selectedPersonId);
+    if (selectedPersonId && graph.ids.has(selectedPersonId) && !visible.has(selectedPersonId)) {
+      const path = pathBetween(graph, focusId, selectedPersonId);
+      setFold((f) => ({ ...f, pinned: new Set([...f.pinned, ...path]) }));
+    }
+  }
+
+  // Center the canvas on a person selected from outside it, but not on plain
+  // clicks inside the canvas.
+  const canvas = useRef<TreeCanvasHandle>(null);
   const clickedInCanvas = useRef(false);
   useEffect(() => {
-    if (!rf || !selectedPersonId) return;
+    if (!selectedPersonId) return;
     if (clickedInCanvas.current) {
       clickedInCanvas.current = false;
       return;
     }
-    const n = rf.getNode(selectedPersonId);
-    if (!n) return;
-    rf.setCenter(n.position.x + NODE_W / 2, n.position.y + NODE_H / 2, {
-      zoom: Math.max(rf.getZoom(), 0.9),
-      duration: 400,
-    });
-  }, [rf, selectedPersonId]);
+    canvas.current?.centerOn(selectedPersonId);
+  }, [selectedPersonId]);
 
   const goNextReview = useCallback(() => {
     const i = reviewIds.indexOf(selectedPersonId ?? "");
@@ -75,74 +103,57 @@ const TreeView: React.FC = () => {
     selectPerson(id);
   }, [reviewIds, selectedPersonId, selectPerson]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
-    () => buildTreeLayout(people, marriages, months),
-    [people, marriages, months]
+  const toggleFold = useCallback(
+    (id: string) => {
+      const unfold = (layout.byId.get(id)?.hiddenAncestors ?? 0) > 0;
+      setFold((f) => {
+        const expanded = new Set(f.expanded);
+        const collapsed = new Set(f.collapsed);
+        (unfold ? expanded : collapsed).add(id);
+        (unfold ? collapsed : expanded).delete(id);
+        return { ...f, expanded, collapsed };
+      });
+      setContextMenu(null);
+    },
+    [layout]
   );
 
-  const nodesWithSelection = useMemo(
-    () =>
-      layoutNodes.map((n) =>
-        n.type === "person"
-          ? {
-              ...n,
-              data: {
-                ...(n.data as PersonNodeData),
-                selected: selectedIds.includes(n.id),
-              },
-            }
-          : n
-      ),
-    [layoutNodes, selectedIds]
-  );
+  const focusOn = useCallback((id: string | null) => {
+    setFocusChoice(id);
+    setFold(foldTo(DEFAULT_GENS));
+    setContextMenu(null);
+  }, []);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(nodesWithSelection);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
-
-  useEffect(() => {
-    setNodes(nodesWithSelection);
-    setEdges(layoutEdges);
-  }, [nodesWithSelection, layoutEdges, setNodes, setEdges]);
-
-  const onNodeClick: NodeMouseHandler = useCallback(
-    (event, node) => {
-      if (node.type !== "person") return;
-      const native = event as unknown as MouseEvent;
-      if (native.ctrlKey || native.metaKey || native.shiftKey) {
+  const onPersonClick = useCallback(
+    (id: string, multi: boolean) => {
+      if (multi) {
         setSelectedIds((prev) => {
-          if (prev.includes(node.id)) return prev.filter((id) => id !== node.id);
-          if (prev.length >= 2) return [prev[1], node.id];
-          return [...prev, node.id];
+          if (prev.includes(id)) return prev.filter((other) => other !== id);
+          if (prev.length >= 2) return [prev[1], id];
+          return [...prev, id];
         });
       } else {
-        setSelectedIds([node.id]);
-        clickedInCanvas.current = node.id !== selectedPersonId;
-        selectPerson(node.id);
+        setSelectedIds([id]);
+        clickedInCanvas.current = id !== selectedPersonId;
+        selectPerson(id);
       }
       setContextMenu(null);
     },
     [selectPerson, selectedPersonId]
   );
 
-  const onNodeDoubleClick: NodeMouseHandler = useCallback(
-    (_event, node) => {
-      if (node.type !== "person") return;
-      selectPerson(node.id);
-      if (isEditor) requestEditPerson(node.id);
+  const onPersonDoubleClick = useCallback(
+    (id: string) => {
+      selectPerson(id);
+      if (isEditor) requestEditPerson(id);
     },
     [selectPerson, requestEditPerson, isEditor]
   );
 
-  const onNodeContextMenu: NodeMouseHandler = useCallback(
-    (event, node) => {
-      if (node.type !== "person" || !isEditor) return;
-      event.preventDefault();
-      setSelectedIds((prev) => (prev.includes(node.id) ? prev : [node.id]));
-      const e = event as unknown as MouseEvent;
-      setContextMenu({ x: e.clientX, y: e.clientY });
-    },
-    [isEditor]
-  );
+  const onPersonContextMenu = useCallback((id: string, x: number, y: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev : [id]));
+    setContextMenu({ x, y });
+  }, []);
 
   const handleAddChild = useCallback(() => {
     setContextMenu(null);
@@ -169,14 +180,11 @@ const TreeView: React.FC = () => {
     setContextMenu(null);
   }, [selectPerson]);
 
-  const selectedNames = selectedIds
-    .map((id) => {
-      const p = getPersonById(id);
-      return p
-        ? [p.firstName, p.lastName].filter(Boolean).join(" ") || p.id
-        : id;
-    })
-    .join(" & ");
+  const nameOf = (id: string) => {
+    const p = getPersonById(id);
+    return p ? [p.firstName, p.lastName].filter(Boolean).join(" ") || p.id : id;
+  };
+  const selectedNames = selectedIds.map(nameOf).join(" & ");
 
   const singleSelected =
     selectedIds.length === 1 ? getPersonById(selectedIds[0]) : null;
@@ -186,49 +194,100 @@ const TreeView: React.FC = () => {
 
   return (
     <div className="tree-wrap">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        onNodeClick={onNodeClick}
-        onNodeDoubleClick={onNodeDoubleClick}
-        onNodeContextMenu={onNodeContextMenu}
+      <TreeCanvas
+        ref={canvas}
+        layout={layout}
+        selectedIds={selectedIds}
+        homeKey={`${focusId}|${fold.gens}`}
+        homeId={focusId}
+        label={t("app.tree")}
+        onPersonClick={onPersonClick}
+        onPersonDoubleClick={onPersonDoubleClick}
+        onPersonContextMenu={onPersonContextMenu}
         onPaneClick={handlePaneClick}
-        onInit={setRf}
-        fitView
-        fitViewOptions={{ padding: 0.25 }}
-        minZoom={0.05}
-        maxZoom={2}
-        proOptions={{ hideAttribution: false }}
-      >
-        <Background gap={22} size={1.5} color="rgba(120,96,58,0.14)" />
-        <Controls showInteractive={false} />
-        <MiniMap
-          pannable
-          zoomable
-          maskColor="rgba(243,234,214,0.6)"
-          nodeColor={(node) => {
-            if (node.type === "union") return "#9c3b4e";
-            const r = (node.data as PersonNodeData).review;
-            if (r === "new") return "#b1832f";
-            if (r === "updated") return "#3f6b4c";
-            if (r === "conflict") return "#a63a2b";
-            const g = (node.data as { gender?: string }).gender;
-            if (g === "male") return "#3c6478";
-            if (g === "female") return "#9c3b4e";
-            if (g === "other") return "#b1832f";
-            return "#8a7a5f";
-          }}
-        />
-      </ReactFlow>
+        onToggleFold={toggleFold}
+      />
 
-      {hasReview && (
-        <button className="btn btn--primary review-next" onClick={goNextReview}>
-          {t("review.next", { n: String(reviewIds.length) })}
-        </button>
-      )}
+      <div className="tree-bar">
+        {hasReview && (
+          <button className="btn btn--primary" onClick={goNextReview}>
+            {t("review.next", { n: String(reviewIds.length) })}
+          </button>
+        )}
+
+        <div className="tree-bar__group floating">
+          <span className="tree-bar__label">{t("tree.generations")}</span>
+          <button
+            className="tree-bar__btn"
+            onClick={() => setFold(foldTo(fold.gens - 1))}
+            disabled={fold.gens === Infinity || fold.gens <= 1}
+            aria-label={t("tree.fewerGenerations")}
+          >
+            −
+          </button>
+          <span className="tree-bar__value">{fold.gens === Infinity ? "∞" : fold.gens}</span>
+          <button
+            className="tree-bar__btn"
+            onClick={() => setFold(foldTo(fold.gens + 1))}
+            disabled={fold.gens === Infinity || showingAll}
+            aria-label={t("tree.moreGenerations")}
+          >
+            +
+          </button>
+          <button
+            className="tree-bar__btn tree-bar__btn--text"
+            onClick={() => setFold(foldTo(fold.gens === Infinity ? DEFAULT_GENS : Infinity))}
+          >
+            {fold.gens === Infinity ? t("tree.foldBack") : t("tree.showAll")}
+          </button>
+          <span className="tree-bar__count">
+            {t("tree.shown", { n: String(visible.size), total: String(people.length) })}
+          </span>
+        </div>
+
+        <div className="tree-bar__group floating">
+          <button
+            className="tree-bar__btn"
+            onClick={() => canvas.current?.zoomBy(1 / 1.4)}
+            title={t("tree.zoomOut")}
+            aria-label={t("tree.zoomOut")}
+          >
+            −
+          </button>
+          <button
+            className="tree-bar__btn"
+            onClick={() => canvas.current?.zoomBy(1.4)}
+            title={t("tree.zoomIn")}
+            aria-label={t("tree.zoomIn")}
+          >
+            +
+          </button>
+          <button
+            className="tree-bar__btn"
+            onClick={() => canvas.current?.fit()}
+            title={t("tree.fit")}
+            aria-label={t("tree.fit")}
+          >
+            ⤢
+          </button>
+        </div>
+
+        {focusChoice && focusChoice === focusId && (
+          <div className="tree-bar__group floating">
+            <span className="tree-bar__label">
+              {t("tree.focusedOn", { name: nameOf(focusChoice) })}
+            </span>
+            <button
+              className="tree-bar__btn"
+              onClick={() => focusOn(null)}
+              title={t("tree.focusReset")}
+              aria-label={t("tree.focusReset")}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+      </div>
 
       {contextMenu && selectedIds.length > 0 && (
         <div
@@ -236,10 +295,12 @@ const TreeView: React.FC = () => {
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <div className="ctxmenu__head">{selectedNames}</div>
-          <button className="ctxmenu__item" onClick={handleAddChild}>
-            {t("tree.addChild")}
-          </button>
-          {selectedIds.length === 1 && (
+          {isEditor && (
+            <button className="ctxmenu__item" onClick={handleAddChild}>
+              {t("tree.addChild")}
+            </button>
+          )}
+          {isEditor && selectedIds.length === 1 && (
             <button
               className="ctxmenu__item"
               onClick={handleAddParent}
@@ -251,6 +312,15 @@ const TreeView: React.FC = () => {
                 : parentCount >= 2
                   ? t("tree.maxReached")
                   : ""}
+            </button>
+          )}
+          {selectedIds.length === 1 && (
+            <button
+              className="ctxmenu__item"
+              onClick={() => focusOn(selectedIds[0])}
+              disabled={selectedIds[0] === focusId}
+            >
+              {t("tree.focusHere")}
             </button>
           )}
         </div>
@@ -316,6 +386,10 @@ const TreeView: React.FC = () => {
             />
           </svg>
           {t("tree.partnerMarriage")}
+        </div>
+        <div className="legend__row">
+          <span className="legend__chip">▲ 12</span>
+          {t("tree.folded")}
         </div>
         {hasReview && (
           <>
