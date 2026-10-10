@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Arbre généalogique de la famille Tramoni : vue arbre (ReactFlow + dagre), carte des lieux (Leaflet/OSM), fiche détaillée par personne avec galerie de documents. L'interface est en FR/EN ; l'utilisateur échange en français.
+Arbre généalogique de la famille Tramoni : vue arbre (canvas + dagre), carte des lieux (Leaflet/OSM), fiche détaillée par personne avec galerie de documents. L'interface est en FR/EN ; l'utilisateur échange en français.
 
 ## Architecture
 
@@ -97,8 +97,10 @@ Vérifications : `npm run build` (inclut `tsc -b`) et `npm run lint`. Il n'y a p
 - `src/App.tsx` — en-tête, sélecteur d'arbres, onglets Arbre/Carte, garde d'authentification.
 - `src/hooks/useFamily.tsx` — état de l'arbre, appels API, CRUD personnes/mariages, backfill géocodage.
 - `src/hooks/useAuth.tsx` — login JWT. `src/hooks/useI18n.tsx` — traductions FR/EN (ajouter toute nouvelle chaîne dans les deux langues).
-- `src/utils/treeLayout.ts` — calcul du graphe : nœuds `person` + nœuds `union` (couple), positionnés par dagre.
-- `src/components/` — `TreeView`, `PersonNode`, `UnionNode`, `MapView`, `DetailPanel`, `AddPersonForm`, `PlaceAutocomplete` (recherche Nominatim), `DocumentGallery`, `LoginPage`.
+- `src/utils/treeLayout.ts` — géométrie de l'arbre : cartes `person` + nœuds `union` (couple), positionnés par dagre. Le résultat de dagre (~1 s pour 900 personnes) est gardé en cache tant que les liens ne changent pas.
+- `src/utils/treeFold.ts` — pliage : on n'affiche que la personne de départ (`me`, sinon la personne sans enfant qui a le plus d'ascendants), N générations au-dessus (4 par défaut) et les branches dépliées à la main. C'est un filtre d'affichage, il n'écrit rien dans l'arbre.
+- `src/utils/treeRenderer.ts` — rendu de l'arbre sur un `<canvas>` (déplacement, zoom, clics, mini-carte), hors de React. Les cartes ne sont pas des éléments DOM : leur apparence est dans ce fichier, pas dans le CSS.
+- `src/components/` — `TreeView` (barre d'outils, menu contextuel), `TreeCanvas` (enveloppe React du renderer), `MapView`, `DetailPanel`, `AddPersonForm`, `PlaceAutocomplete` (recherche Nominatim), `DocumentGallery`, `LoginPage`.
 - Styles : un seul `src/index.css` (thème « patrimoine »).
 
 ## Points d'attention connus
