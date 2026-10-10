@@ -18,6 +18,9 @@ export interface TreeMeta {
 interface FamilyContextType {
   // Tree management
   trees: TreeMeta[];
+  /** The current tree was changed elsewhere: edits are not saved until reloadTree(). */
+  conflict: boolean;
+  reloadTree: () => void;
   currentTreeId: string | null;
   currentTreeName: string;
   switchTree: (id: string) => void;
@@ -174,16 +177,70 @@ async function backfillAddressFields(
   );
 }
 
-/** Save tree data to the API */
-async function persistTree(treeId: string, name: string, people: Person[], marriages: Marriage[]) {
+// ─── Saving ──────────────────────────────────────────────────────────────────
+
+interface SaveJob {
+  name: string;
+  people: Person[];
+  marriages: Marriage[];
+}
+
+/** Version of each tree as last seen on the server (absent with an older API). */
+const treeVersions = new Map<string, number>();
+/** Latest state waiting to be sent, per tree. */
+const pendingSaves = new Map<string, SaveJob>();
+const savingTrees = new Set<string>();
+/** Trees changed elsewhere since they were loaded: nothing is sent until a reload. */
+const conflictedTrees = new Set<string>();
+
+function rememberVersion(treeId: string, version: unknown) {
+  if (typeof version === "number") treeVersions.set(treeId, version);
+  else treeVersions.delete(treeId);
+  conflictedTrees.delete(treeId);
+  pendingSaves.delete(treeId);
+}
+
+/**
+ * Save tree data to the API.
+ *
+ * Saves of one tree go out one at a time (rapid edits are merged into the
+ * latest state), each carrying the version it is based on. The API answers
+ * 409 when the tree was changed from somewhere else in the meantime: the save
+ * is dropped and a "tree-conflict" event asks the user to reload.
+ */
+function persistTree(treeId: string, name: string, people: Person[], marriages: Marriage[]) {
+  if (conflictedTrees.has(treeId)) {
+    window.dispatchEvent(new CustomEvent("tree-conflict", { detail: treeId }));
+    return;
+  }
+  pendingSaves.set(treeId, { name, people, marriages });
+  if (!savingTrees.has(treeId)) void flushSaves(treeId);
+}
+
+async function flushSaves(treeId: string) {
+  savingTrees.add(treeId);
   try {
-    await fetch(`${API_BASE}/api/trees/${treeId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ name, people, marriages }),
-    });
+    for (let job = pendingSaves.get(treeId); job; job = pendingSaves.get(treeId)) {
+      pendingSaves.delete(treeId);
+      const res = await fetch(`${API_BASE}/api/trees/${treeId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ ...job, baseVersion: treeVersions.get(treeId) }),
+      });
+      if (res.status === 409) {
+        conflictedTrees.add(treeId);
+        pendingSaves.delete(treeId);
+        window.dispatchEvent(new CustomEvent("tree-conflict", { detail: treeId }));
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json().catch(() => null);
+      if (typeof body?.version === "number") treeVersions.set(treeId, body.version);
+    }
   } catch (err) {
     console.warn("Could not save to server:", err);
+  } finally {
+    savingTrees.delete(treeId);
   }
 }
 
@@ -199,6 +256,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
   const [mapFlyTarget, setMapFlyTarget] = useState<string | null>(null);
   const [editPersonId, setEditPersonId] = useState<string | null>(null);
   const [loadingTree, setLoadingTree] = useState(true);
+  const [conflictTreeId, setConflictTreeId] = useState<string | null>(null);
 
   // Refs for async persist
   const marriagesRef = useRef(marriages);
@@ -218,6 +276,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     window.addEventListener("backfill-complete", handler);
     return () => window.removeEventListener("backfill-complete", handler);
+  }, []);
+
+  // The API refused a save because the tree changed elsewhere
+  useEffect(() => {
+    const handler = (e: Event) => setConflictTreeId((e as CustomEvent).detail as string);
+    window.addEventListener("tree-conflict", handler);
+    return () => window.removeEventListener("tree-conflict", handler);
   }, []);
 
   /** Fetch the list of trees from the API */
@@ -243,6 +308,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       if (!res.ok) throw new Error("Tree not found");
       const data = await res.json();
+      rememberVersion(id, data.version);
+      setConflictTreeId((prev) => (prev === id ? null : prev));
       const loadedPeople: Person[] = data.people || [];
       const loadedMarriages: Marriage[] = data.marriages || [];
       setPeople(loadedPeople);
@@ -317,13 +384,23 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
     [refreshTreeList, loadTree]
   );
 
+  const reloadTree = useCallback(() => {
+    const id = currentTreeIdRef.current;
+    if (id) loadTree(id);
+  }, [loadTree]);
+
   const renameTree = useCallback(
     async (id: string, name: string) => {
-      await fetch(`${API_BASE}/api/trees/${id}`, {
+      const res = await fetch(`${API_BASE}/api/trees/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ name }),
       });
+      // a rename is a write too: keep our version in step so the next save is accepted
+      const body = await res.json().catch(() => null);
+      if (typeof body?.version === "number" && !savingTrees.has(id) && !conflictedTrees.has(id)) {
+        treeVersions.set(id, body.version);
+      }
       if (id === currentTreeIdRef.current) {
         setCurrentTreeName(name);
       }
@@ -502,6 +579,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({
     <FamilyContext.Provider
       value={{
         trees,
+        conflict: conflictTreeId !== null && conflictTreeId === currentTreeId,
+        reloadTree,
         currentTreeId,
         currentTreeName,
         switchTree,

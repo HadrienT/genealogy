@@ -4,6 +4,8 @@ import {
   TileLayer,
   Marker,
   Popup,
+  Polyline,
+  Tooltip,
   useMap,
   useMapEvents,
 } from "react-leaflet";
@@ -204,11 +206,129 @@ function extractYear(dateStr?: string): number | null {
   return Number.isFinite(y) ? y : null;
 }
 
+/** Without a death date, a person is taken to have lived this long. */
+const ASSUMED_LIFESPAN = 80;
+
+/**
+ * Whether a person belongs on the map for the year of the slider: born by
+ * then, and with `aliveOnly` also not dead yet.
+ */
+function inYear(p: Person, year: number | null, aliveOnly: boolean): boolean {
+  if (year === null) return true;
+  const birth = extractYear(p.birthDate);
+  if (birth === null || birth > year) return false;
+  if (!aliveOnly) return true;
+  return year <= (extractYear(p.deathDate) ?? birth + ASSUMED_LIFESPAN);
+}
+
+interface Flow {
+  key: string;
+  from: [number, number];
+  to: [number, number];
+  kind: "lineage" | "life";
+  label: string;
+  count: number;
+}
+
+const placeKey = (c: { lat: number; lng: number }) => `${c.lat.toFixed(2)},${c.lng.toFixed(2)}`;
+const cityOf = (p: Person, type: "birth" | "death") =>
+  (type === "birth"
+    ? p.birthCity || p.birthPlaceDisplay || p.birthPlace?.split(",")[0]
+    : p.deathCity || p.deathPlaceDisplay || p.deathPlace?.split(",")[0]) || "?";
+
+function arrowIcon(from: [number, number], to: [number, number], color: string): L.DivIcon {
+  // bearing on screen: longitudes shrink with latitude on a Mercator map
+  const dx = (to[1] - from[1]) * Math.cos((((from[0] + to[0]) / 2) * Math.PI) / 180);
+  const dy = to[0] - from[0];
+  const angle = (Math.atan2(dx, dy) * 180) / Math.PI;
+  return L.divIcon({
+    className: "",
+    html: `<svg width="14" height="14" viewBox="-7 -7 14 14" style="transform:rotate(${angle}deg)"><path d="M0 -6 L5 5 L0 2 L-5 5 Z" fill="${color}" stroke="#fdf8ec" stroke-width="1"/></svg>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+}
+
+/**
+ * Moves between places: from each parent's birth place to their child's, and
+ * from a person's birth place to where they died. Moves between the same two
+ * places are drawn as one line, thicker the more people took it.
+ */
+const MigrationLines: React.FC<{
+  showDeath: boolean;
+  year: number | null;
+  aliveOnly: boolean;
+}> = ({ showDeath, year, aliveOnly }) => {
+  const { people } = useFamily();
+  const { t } = useI18n();
+
+  const flows = useMemo(() => {
+    const byId = new Map(people.map((p) => [p.id, p]));
+    const map = new Map<string, Flow>();
+    const add = (
+      kind: Flow["kind"],
+      a: { lat: number; lng: number },
+      b: { lat: number; lng: number },
+      label: string
+    ) => {
+      const ka = placeKey(a);
+      const kb = placeKey(b);
+      if (ka === kb) return;
+      const key = `${kind}:${ka}>${kb}`;
+      const flow = map.get(key);
+      if (flow) flow.count++;
+      else map.set(key, { key, kind, from: [a.lat, a.lng], to: [b.lat, b.lng], label, count: 1 });
+    };
+    for (const p of people) {
+      if (!p.birthCoordinates || !inYear(p, year, aliveOnly)) continue;
+      for (const parentId of p.parentIds ?? []) {
+        const parent = byId.get(parentId);
+        if (parent?.birthCoordinates) {
+          add("lineage", parent.birthCoordinates, p.birthCoordinates, `${cityOf(parent, "birth")} → ${cityOf(p, "birth")}`);
+        }
+      }
+      if (showDeath && p.deathCoordinates) {
+        add("life", p.birthCoordinates, p.deathCoordinates, `${cityOf(p, "birth")} → ${cityOf(p, "death")}`);
+      }
+    }
+    return [...map.values()];
+  }, [people, showDeath, year, aliveOnly]);
+
+  return (
+    <>
+      {flows.map((f) => {
+        const color = f.kind === "lineage" ? BIRTH_COLOR : DEATH_COLOR;
+        const mid: [number, number] = [(f.from[0] + f.to[0]) / 2, (f.from[1] + f.to[1]) / 2];
+        return (
+          <React.Fragment key={f.key}>
+            <Polyline
+              positions={[f.from, f.to]}
+              pathOptions={{
+                color,
+                weight: 1.5 + Math.min(f.count, 8) * 0.5,
+                opacity: 0.55,
+                dashArray: f.kind === "life" ? "6 5" : undefined,
+              }}
+            >
+              <Tooltip sticky>
+                {f.label}
+                {f.count > 1 && ` · ${t("map.moves", { n: String(f.count) })}`}
+              </Tooltip>
+            </Polyline>
+            <Marker position={mid} icon={arrowIcon(f.from, f.to, color)} interactive={false} keyboard={false} />
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+};
+
 const MapMarkers: React.FC<{
   showBirth: boolean;
   showDeath: boolean;
   maxYear: number | null;
-}> = ({ showBirth, showDeath, maxYear }) => {
+  aliveOnly: boolean;
+}> = ({ showBirth, showDeath, maxYear, aliveOnly }) => {
   const { people, selectPerson } = useFamily();
   const { t, months } = useI18n();
   const markerRefs = useRef<Record<string, L.Marker>>({});
@@ -216,10 +336,7 @@ const MapMarkers: React.FC<{
   const pins = useMemo(() => {
     const result: PinEntry[] = [];
     for (const p of people) {
-      if (maxYear !== null) {
-        const by = extractYear(p.birthDate);
-        if (by === null || by > maxYear) continue;
-      }
+      if (!inYear(p, maxYear, aliveOnly)) continue;
       if (showBirth && p.birthCoordinates) {
         result.push({ person: p, type: "birth", lat: p.birthCoordinates.lat, lng: p.birthCoordinates.lng });
       }
@@ -228,7 +345,7 @@ const MapMarkers: React.FC<{
       }
     }
     return result;
-  }, [people, showBirth, showDeath, maxYear]);
+  }, [people, showBirth, showDeath, maxYear, aliveOnly]);
 
   const groups = useMemo(() => groupPins(pins), [pins]);
 
@@ -328,6 +445,8 @@ const MapView: React.FC = () => {
   const { t } = useI18n();
   const [showBirth, setShowBirth] = useState(true);
   const [showDeath, setShowDeath] = useState(false);
+  const [aliveOnly, setAliveOnly] = useState(false);
+  const [showMigrations, setShowMigrations] = useState(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [stepSize, setStepSize] = useState(5);
@@ -438,6 +557,22 @@ const MapView: React.FC = () => {
         >
           {t("map.death")}
         </button>
+        <button
+          className={"map-toggle" + (aliveOnly ? " map-toggle--on" : "")}
+          onClick={() => setAliveOnly((v) => !v)}
+          title={t("map.aliveHint")}
+          aria-pressed={aliveOnly}
+        >
+          {t("map.alive")}
+        </button>
+        <button
+          className={"map-toggle" + (showMigrations ? " map-toggle--on" : "")}
+          onClick={() => setShowMigrations((v) => !v)}
+          title={t("map.migrationsHint")}
+          aria-pressed={showMigrations}
+        >
+          {t("map.migrations")}
+        </button>
       </div>
 
       <MapContainer
@@ -450,7 +585,15 @@ const MapView: React.FC = () => {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapMarkers showBirth={showBirth} showDeath={showDeath} maxYear={timelineYear} />
+        {showMigrations && (
+          <MigrationLines showDeath={showDeath} year={timelineYear} aliveOnly={aliveOnly} />
+        )}
+        <MapMarkers
+          showBirth={showBirth}
+          showDeath={showDeath}
+          maxYear={timelineYear}
+          aliveOnly={aliveOnly}
+        />
       </MapContainer>
 
       {minYear !== null && dataMaxYear !== null && (

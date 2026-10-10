@@ -33,7 +33,7 @@ Le versioning GCS est activé sur le bucket (et la suppression douce dure 7 jour
 Organisation du bucket / dossier :
 
 ```
-<id-arbre>.json          # un fichier par arbre : { id, name, people: Person[], marriages: Marriage[] }
+<id-arbre>.json          # un fichier par arbre : { id, name, version, people: Person[], marriages: Marriage[] }
 _users.json              # comptes : { id, username, passwordHash (bcrypt), role: "editor"|"viewer" }
 docs/<personId>/_meta.json         # métadonnées des documents d'une personne
 docs/<personId>/<docId>.<ext>      # fichiers (photos, PDF…) — jusqu'à 20 Mo
@@ -67,7 +67,9 @@ Pour ajouter beaucoup de personnes (par exemple depuis des photos d'un arbre pap
 
 ## Flux de sauvegarde
 
-`useFamily` garde l'arbre en état React ; chaque modification appelle `persist()` qui fait un `PUT /api/trees/:id` avec l'arbre **complet** (écrasement total, pas de fusion ni de verrou). Deux éditeurs simultanés s'écrasent mutuellement.
+`useFamily` garde l'arbre en état React ; chaque modification appelle `persist()` qui fait un `PUT /api/trees/:id` avec l'arbre **complet** (écrasement total, pas de fusion).
+
+Protection contre l'écrasement : le JSON de l'arbre porte un champ `version`, que l'API incrémente à chaque écriture (`PUT` et `PATCH`). Le front envoie `baseVersion` (la version qu'il a chargée) ; si l'arbre a changé entre-temps, l'API répond **409** et n'écrit rien, et le front affiche un bandeau « Recharger l'arbre » (la modification refusée est perdue, il n'y a pas de fusion). Les sauvegardes d'un même arbre partent une par une (`persistTree` / `flushSaves` dans `useFamily.tsx`). Un client qui n'envoie pas `baseVersion` garde l'ancien comportement (le dernier qui écrit gagne), donc front et API peuvent être déployés dans n'importe quel ordre. Le verrou côté API est par instance Cloud Run : deux instances simultanées pourraient encore se croiser.
 
 ## API (toutes les routes sauf login exigent `Authorization: Bearer <jwt>`)
 
@@ -94,13 +96,15 @@ Vérifications : `npm run build` (inclut `tsc -b`) et `npm run lint`. Il n'y a p
 
 ## Carte du code front
 
-- `src/App.tsx` — en-tête, sélecteur d'arbres, onglets Arbre/Carte, garde d'authentification.
+- `src/App.tsx` — en-tête (sélecteur d'arbres, recherche, incohérences), onglets Arbre/Carte/Statistiques, bandeau de conflit, garde d'authentification.
 - `src/hooks/useFamily.tsx` — état de l'arbre, appels API, CRUD personnes/mariages, backfill géocodage.
 - `src/hooks/useAuth.tsx` — login JWT. `src/hooks/useI18n.tsx` — traductions FR/EN (ajouter toute nouvelle chaîne dans les deux langues).
 - `src/utils/treeLayout.ts` — géométrie de l'arbre : cartes `person` + nœuds `union` (couple), positionnés par dagre. Le résultat de dagre (~1 s pour 900 personnes) est gardé en cache tant que les liens ne changent pas.
 - `src/utils/treeFold.ts` — pliage : on n'affiche que la personne de départ (`me`, sinon la personne sans enfant qui a le plus d'ascendants), N générations au-dessus (4 par défaut) et les branches dépliées à la main. C'est un filtre d'affichage, il n'écrit rien dans l'arbre.
 - `src/utils/treeRenderer.ts` — rendu de l'arbre sur un `<canvas>` (déplacement, zoom, clics, mini-carte), hors de React. Les cartes ne sont pas des éléments DOM : leur apparence est dans ce fichier, pas dans le CSS.
-- `src/components/` — `TreeView` (barre d'outils, menu contextuel), `TreeCanvas` (enveloppe React du renderer), `MapView`, `DetailPanel`, `AddPersonForm`, `PlaceAutocomplete` (recherche Nominatim), `DocumentGallery`, `LoginPage`.
+- `src/utils/checks.ts` — détection d'incohérences (dates et liens impossibles), en lecture seule ; affichée par `IssuesMenu` (en-tête) et dans `DetailPanel`. Les seuils (âges limites) sont en tête du fichier.
+- `src/utils/stats.ts` + `StatsView` — onglet Statistiques (barres en HTML/CSS, pas de bibliothèque de graphiques).
+- `src/components/` — `SearchBox` (recherche par nom, raccourci `/`), `TreeView` (barre d'outils, menu contextuel), `TreeCanvas` (enveloppe React du renderer), `MapView` (épingles, curseur temporel, mode « vivants cette année-là », lignes de migration), `DetailPanel`, `AddPersonForm`, `PlaceAutocomplete` (recherche Nominatim), `DocumentGallery`, `LoginPage`.
 - Styles : un seul `src/index.css` (thème « patrimoine »).
 
 ## Points d'attention connus
