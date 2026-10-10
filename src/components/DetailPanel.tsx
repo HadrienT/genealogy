@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useFamily } from "../hooks/useFamily";
 import { useAuth } from "../hooks/useAuth";
 import type { Person } from "../types/person";
@@ -8,6 +8,8 @@ import DocumentGallery from "./DocumentGallery";
 import { formatDate } from "../utils/formatDate";
 import { formatMarriagePlace } from "../utils/formatMarriagePlace";
 import { useI18n } from "../hooks/useI18n";
+import { findIssues } from "../utils/checks";
+import { useIssueText } from "../hooks/useIssueText";
 
 interface MarriageForm {
   date: string;
@@ -49,6 +51,8 @@ const DetailPanel: React.FC = () => {
   } = useFamily();
   const { t, months } = useI18n();
   const { isEditor } = useAuth();
+  const describeIssue = useIssueText();
+  const allIssues = useMemo(() => findIssues(people, marriages), [people, marriages]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Person>>({});
@@ -122,6 +126,7 @@ const DetailPanel: React.FC = () => {
   if (!selectedPerson) return null;
 
   const p = selectedPerson;
+  const personIssues = allIssues.filter((issue) => issue.personId === p.id);
   const editing = editingId === p.id;
 
   const handleRelationClick = (id: string) => {
@@ -477,6 +482,17 @@ const DetailPanel: React.FC = () => {
           )}
         </div>
       </div>
+
+      {personIssues.length > 0 && (
+        <div className="review-box review-box--conflict">
+          <div className="review-box__title">⚠ {t("issue.panelTitle")}</div>
+          <ul>
+            {personIssues.map((issue, i) => (
+              <li key={i}>{describeIssue(issue)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {p.review && (
         <div className={`review-box review-box--${p.review.status}`}>

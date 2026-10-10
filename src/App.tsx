@@ -1,6 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import TreeView from "./components/TreeView";
 import MapView from "./components/MapView";
+import StatsView from "./components/StatsView";
+import SearchBox from "./components/SearchBox";
+import IssuesMenu from "./components/IssuesMenu";
+import { findIssues } from "./utils/checks";
 import DetailPanel from "./components/DetailPanel";
 import AddPersonForm from "./components/AddPersonForm";
 import LoginPage from "./components/LoginPage";
@@ -9,7 +13,7 @@ import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { I18nProvider, useI18n } from "./hooks/useI18n";
 import type { Lang } from "./hooks/useI18n";
 
-type ViewMode = "tree" | "map";
+type ViewMode = "tree" | "map" | "stats";
 
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>("tree");
@@ -18,6 +22,11 @@ const AppContent: React.FC = () => {
   const { user, isEditor, logout } = useAuth();
   const {
     people,
+    marriages,
+    selectPerson,
+    requestMapFlyTo,
+    conflict,
+    reloadTree,
     trees,
     currentTreeId,
     currentTreeName,
@@ -28,6 +37,17 @@ const AppContent: React.FC = () => {
     loadingTree,
   } = useFamily();
   const reviewCount = people.filter((p) => p.review).length;
+  const issues = useMemo(() => findIssues(people, marriages), [people, marriages]);
+
+  // Show a person picked from the search box or the list of inconsistencies
+  const showPerson = useCallback(
+    (id: string) => {
+      selectPerson(id);
+      if (view === "map") requestMapFlyTo(id);
+      else setView("tree");
+    },
+    [view, selectPerson, requestMapFlyTo]
+  );
   const [selectorOpen, setSelectorOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
 
@@ -150,7 +170,10 @@ const AppContent: React.FC = () => {
               {t("review.pending", { n: String(reviewCount) })}
             </span>
           )}
+          <IssuesMenu issues={issues} onPick={showPerson} />
         </div>
+
+        <SearchBox onPick={showPerson} />
 
         <nav style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <div className="tabs">
@@ -165,6 +188,16 @@ const AppContent: React.FC = () => {
               onClick={() => setView("map")}
             >
               {t("app.map")}
+            </button>
+            <button
+              className={"tab" + (view === "stats" ? " tab--active" : "")}
+              onClick={() => {
+                // the detail panel would cover the figures
+                selectPerson(null);
+                setView("stats");
+              }}
+            >
+              {t("app.stats")}
             </button>
           </div>
 
@@ -196,6 +229,15 @@ const AppContent: React.FC = () => {
         </nav>
       </header>
 
+      {conflict && (
+        <div className="conflict" role="alert">
+          <span>{t("app.conflict")}</span>
+          <button className="btn btn--sm" onClick={reloadTree}>
+            {t("app.reload")}
+          </button>
+        </div>
+      )}
+
       <main className="app__main">
         {loadingTree ? (
           <div className="app__loading">{t("app.loadingTree")}</div>
@@ -203,6 +245,7 @@ const AppContent: React.FC = () => {
           <>
             {view === "tree" && <TreeView />}
             {view === "map" && <MapView />}
+            {view === "stats" && <StatsView />}
             <DetailPanel />
           </>
         )}

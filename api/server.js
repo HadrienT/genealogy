@@ -249,20 +249,49 @@ app.get("/api/trees/:id", authenticate, async (req, res) => {
   try {
     const tree = await readTree(req.params.id);
     if (!tree) return res.status(404).json({ error: "Tree not found" });
-    res.json(tree);
+    res.json({ ...tree, version: tree.version ?? 0 });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
 });
 
-/** Update a tree (full overwrite) */
+/**
+ * Writes to one tree are run one after the other, so that the version check
+ * and the write below cannot interleave within this instance.
+ */
+const treeLocks = new Map();
+function withTreeLock(id, fn) {
+  const run = (treeLocks.get(id) ?? Promise.resolve()).then(fn, fn);
+  const tail = run.catch(() => {});
+  treeLocks.set(id, tail);
+  tail.then(() => {
+    if (treeLocks.get(id) === tail) treeLocks.delete(id);
+  });
+  return run;
+}
+
+/**
+ * Update a tree (full overwrite).
+ *
+ * Every write bumps the tree's `version`. A client that sends `baseVersion`
+ * (the version it loaded) is refused with 409 when the tree has changed since,
+ * instead of silently overwriting someone else's edits. Clients that do not
+ * send it keep the old last-write-wins behaviour.
+ */
 app.put("/api/trees/:id", authenticate, requireRole("editor"), async (req, res) => {
   try {
-    const existing = await readTree(req.params.id);
-    if (!existing) return res.status(404).json({ error: "Tree not found" });
-    const data = { id: req.params.id, ...req.body };
-    await writeTree(req.params.id, data);
-    res.json({ ok: true });
+    await withTreeLock(req.params.id, async () => {
+      const existing = await readTree(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Tree not found" });
+      const current = existing.version ?? 0;
+      const { baseVersion, ...body } = req.body;
+      if (baseVersion !== undefined && baseVersion !== current) {
+        return res.status(409).json({ error: "Tree was modified elsewhere", version: current });
+      }
+      const data = { id: req.params.id, ...body, version: current + 1 };
+      await writeTree(req.params.id, data);
+      res.json({ ok: true, version: data.version });
+    });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -294,11 +323,14 @@ app.delete("/api/trees/:id", authenticate, requireRole("editor"), async (req, re
 /** Rename a tree */
 app.patch("/api/trees/:id", authenticate, requireRole("editor"), async (req, res) => {
   try {
-    const data = await readTree(req.params.id);
-    if (!data) return res.status(404).json({ error: "Tree not found" });
-    if (req.body.name) data.name = req.body.name;
-    await writeTree(req.params.id, data);
-    res.json({ ok: true, name: data.name });
+    await withTreeLock(req.params.id, async () => {
+      const data = await readTree(req.params.id);
+      if (!data) return res.status(404).json({ error: "Tree not found" });
+      if (req.body.name) data.name = req.body.name;
+      data.version = (data.version ?? 0) + 1;
+      await writeTree(req.params.id, data);
+      res.json({ ok: true, name: data.name, version: data.version });
+    });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
