@@ -1,115 +1,117 @@
 # CLAUDE.md
 
-Arbre généalogique de la famille Martin : vue arbre (canvas + dagre), carte des lieux (Leaflet/OSM), fiche détaillée par personne avec galerie de documents. L'interface est en FR/EN ; l'utilisateur échange en français.
+Family tree of the Martin family: tree view (canvas + dagre), map of places (Leaflet/OSM), detailed page per person with a document gallery. The interface is in FR/EN.
+
+- **Language: English by default.** Everything you produce is in English: code, identifiers, comments, commit messages, PRs, issues, documentation and interface text. The only exception is the conversation: reply in the language the maintainer writes in, so in French when they write in French. Interface strings remain available in both FR and EN (see `useI18n`).
 
 ## Architecture
 
-- **Front** (`src/`) : React 19 + TypeScript + Vite 6, `base: '/genealogy/'`. Déployé sur GitHub Pages (`https://hadrient.github.io/genealogy/`) par `.github/workflows/deploy.yml` à chaque push sur `main`, avec `VITE_API_URL` (variable du repo GitHub) pointant vers l'API.
-- **API** (`api/server.js` + `api/localBucket.js`) : Express 5. Déployée sur Cloud Run (service `genealogy-api`, région `europe-west1`, projet `my-gcp-project`, URL `https://genealogy-api-xxxxxxxxxx-ew.a.run.app`) via `cloudbuild.yaml` (image `api/Dockerfile`). Le déploiement de l'API est **manuel** : pousser sur `main` ne redéploie que le front. Commande : `gcloud builds submit --config cloudbuild.yaml --substitutions _REGION=europe-west1,_PROJECT_ID=my-gcp-project,_REPOSITORY=genealogy-api,_SERVICE_NAME=genealogy-api,_GCS_BUCKET=my-gcp-project-genealogy-data` (faire `npm run backup:prod` avant).
-- En dev, Vite proxifie `/api` vers `http://localhost:3001`.
+- **Front end** (`src/`): React 19 + TypeScript + Vite 6, `base: '/genealogy/'`. Deployed on GitHub Pages (`https://hadrient.github.io/genealogy/`) by `.github/workflows/deploy.yml` on each push to `main`, with `VITE_API_URL` (GitHub repository variable) pointing to the API.
+- **API** (`api/server.js` + `api/localBucket.js`): Express 5. Deployed on Cloud Run (service `genealogy-api`, region `europe-west1`, project `my-gcp-project`, URL `https://genealogy-api-xxxxxxxxxx-ew.a.run.app`) through `cloudbuild.yaml` (image `api/Dockerfile`). API deployment is **manual**: pushing to `main` only redeploys the front end. Command: `gcloud builds submit --config cloudbuild.yaml --substitutions _REGION=europe-west1,_PROJECT_ID=my-gcp-project,_REPOSITORY=genealogy-api,_SERVICE_NAME=genealogy-api,_GCS_BUCKET=my-gcp-project-genealogy-data` (run `npm run backup:prod` first).
+- In dev, Vite proxies `/api` to `http://localhost:3001`.
 
-## Où sont stockées les données (personnes, mariages, documents)
+## Where the data is stored (people, marriages, documents)
 
-Il n'y a **pas de base de données** : l'API lit/écrit des fichiers JSON dans un « bucket », qui est soit un bucket Google Cloud Storage, soit un dossier local.
+There is **no database**: the API reads and writes JSON files in a "bucket", which is either a Google Cloud Storage bucket or a local directory.
 
-| Mode | Activé par | Emplacement |
+| Mode | Enabled by | Location |
 |---|---|---|
-| Production | `GCS_BUCKET` sur Cloud Run | **`gs://my-gcp-project-genealogy-data`** (projet GCP `my-gcp-project`) |
-| Local | `LOCAL_DATA_DIR=...` | un dossier sur disque (voir ci-dessous) |
+| Production | `GCS_BUCKET` on Cloud Run | **`gs://my-gcp-project-genealogy-data`** (GCP project `my-gcp-project`) |
+| Local | `LOCAL_DATA_DIR=...` | a directory on disk (see below) |
 
-### ⚠️ La version de référence des données est en PRODUCTION
+### ⚠️ The reference version of the data is in PRODUCTION
 
-L'utilisateur saisit ses données via le site en ligne, donc **la dernière version est toujours dans le bucket GCS**, pas dans le repo ni dans `api/.localdata/`.
+The user enters data through the live site, so **the latest version is always in the GCS bucket**, not in the repository or in `api/.localdata/`.
 
-- `api/.localdata/` est une **vieille copie** (38 personnes au 7 sept. 2026, alors que la prod en avait 134 le 27 sept.). Ne jamais la considérer comme à jour et ne jamais la pousser vers le bucket.
-- `backups/prod-<horodatage>/` : instantanés complets du bucket, créés par `npm run backup:prod` (`scripts/backup-prod.sh`, lecture seule côté bucket). Git-ignoré.
-- **Avant toute opération qui touche aux données** (migration, script, changement du format de sauvegarde, déploiement de l'API), faire d'abord `npm run backup:prod`.
-- Ne jamais écrire dans le bucket de prod (`gcloud storage cp/rm` vers `gs://…`) sans l'accord explicite de l'utilisateur.
-- Pour travailler en local sur des données réelles : `cd api && LOCAL_DATA_DIR=../backups/prod-<horodatage> node server.js`. Le front peut réécrire l'arbre au chargement (backfill géocodage), donc mieux vaut travailler sur une copie de l'instantané.
-- Les écritures faites en local ne remontent **pas** en prod.
+- `api/.localdata/` is an **old copy** (38 people on Sept. 7, 2026, while production had 134 on Sept. 27). Never treat it as up to date and never push it to the bucket.
+- `backups/prod-<timestamp>/`: full snapshots of the bucket, created by `npm run backup:prod` (`scripts/backup-prod.sh`, read-only on the bucket side). Git-ignored.
+- **Before any operation touching the data** (migration, script, change of the save format, API deployment), first run `npm run backup:prod`.
+- Never write to the production bucket (`gcloud storage cp/rm` to `gs://…`) without the user's explicit agreement.
+- To work locally on real data: `cd api && LOCAL_DATA_DIR=../backups/prod-<timestamp> node server.js`. The front end may rewrite the tree on load (geocoding backfill), so it is better to work on a copy of the snapshot.
+- Writes made locally do **not** go back to production.
 
-Le versioning GCS est activé sur le bucket (et la suppression douce dure 7 jours). Chaque `PUT` crée une nouvelle version, qu'on peut lister avec `gcloud storage ls -a gs://my-gcp-project-genealogy-data/<fichier>`. Une règle de cycle de vie supprime les anciennes versions 90 jours après leur remplacement (depuis le 27 sept. 2026 ; avant, elle n'en gardait que 5). Les instantanés `backups/` restent le filet de sécurité principal.
+GCS versioning is enabled on the bucket (and soft delete lasts 7 days). Each `PUT` creates a new version, which can be listed with `gcloud storage ls -a gs://my-gcp-project-genealogy-data/<file>`. A lifecycle rule deletes old versions 90 days after they are replaced (since Sept. 27, 2026; before, it only kept 5). The `backups/` snapshots remain the main safety net.
 
-Organisation du bucket / dossier :
+Layout of the bucket / directory:
 
 ```
-<id-arbre>.json          # un fichier par arbre : { id, name, version, people: Person[], marriages: Marriage[] }
-_users.json              # comptes : { id, username, passwordHash (bcrypt), role: "editor"|"viewer" }
-docs/<personId>/_meta.json         # métadonnées des documents d'une personne
-docs/<personId>/<docId>.<ext>      # fichiers (photos, PDF…) — jusqu'à 20 Mo
+<tree-id>.json           # one file per tree: { id, name, version, people: Person[], marriages: Marriage[] }
+_users.json              # accounts: { id, username, passwordHash (bcrypt), role: "editor"|"viewer" }
+docs/<personId>/_meta.json         # metadata of a person's documents
+docs/<personId>/<docId>.<ext>      # files (photos, PDFs…), up to 20 MB
 ```
 
-- Les **personnes** sont dans le tableau `people` du JSON de l'arbre ; les **mariages** dans `marriages` (date/lieu d'une union, clé = paire `partnerIds`).
-- L'arbre réel est `real-tree-id.json` (« Martin »). La personne `id: "me"` est Lucas.
-- `listAllTrees()` considère tout `*.json` à la racine comme un arbre, sauf les fichiers qui commencent par `_` (comme `_users.json`).
-- Au premier démarrage sur un stockage vide, l'API crée un arbre de démo et les utilisateurs de `SEED_USERS`.
-- `src/data/sampleData.ts` n'est plus utilisé ; le README qui parle de `localStorage` pour les données est obsolète (localStorage ne garde que le token JWT `genealogy-auth-token`, l'arbre courant `genealogy-last-tree-id` et la langue `genealogy-lang`).
+- **People** are in the `people` array of the tree's JSON; **marriages** in `marriages` (date/place of a union, key = `partnerIds` pair).
+- The real tree is `real-tree-id.json` ("Martin"). The person with `id: "me"` is Lucas.
+- `listAllTrees()` treats any `*.json` at the root as a tree, except files starting with `_` (such as `_users.json`).
+- On first start with empty storage, the API creates a demo tree and the users from `SEED_USERS`.
+- `src/data/sampleData.ts` is no longer used. `localStorage` only keeps the JWT token `genealogy-auth-token`, the current tree `genealogy-last-tree-id` and the language `genealogy-lang`.
 
-## Modèle de données
+## Data model
 
-Défini dans `src/types/person.ts`. Tout est optionnel sauf `id`.
+Defined in `src/types/person.ts`. Everything is optional except `id`.
 
-- Relations par ID : `parentIds` ↔ `childrenIds`, `partnerIds` symétrique. En pratique, **la prod ne remplit souvent que `parentIds`** (et `childrenIds` reste vide) : l'affichage se base sur `parentIds`, et tout script qui cherche les enfants doit partir des `parentIds` des enfants. Les nouvelles écritures doivent garder les deux côtés cohérents (voir `addPerson` / `removePerson` dans `src/hooks/useFamily.tsx`).
-- Dates ISO partielles : `"1842"`, `"1842-03"`, `"1842-03-15"`.
-- Lieux : `birthPlace` (texte Nominatim complet), `birthPlaceDisplay` (nom historique affiché), `birthCoordinates`, plus des champs structurés `birthCity`, `birthCountryCode`, `birthCountry`, `birthPostcode`, `birthCounty`, `birthDeptCode` (idem pour `death*`, et sans préfixe pour `Marriage`).
-- `review` (optionnel) : marqueur « à relire » posé par un import sur un **arbre brouillon** (`status` new/updated/conflict, `sources` = photos, `notes`, `changes`, `uncertain`). L'app surligne ces cartes, les liste avec le bouton « Suivant à relire », et le bouton « Marquer comme relu » du panneau supprime le marqueur. Ce champ ne doit pas partir tel quel en prod.
-- Au chargement d'un arbre, `backfillAddressFields` géocode en inverse (Nominatim, 1 req/s) les personnes ayant des coordonnées sans ville, puis réenregistre l'arbre.
+- Relations by ID: `parentIds` ↔ `childrenIds`, `partnerIds` symmetric. In practice, **production often only fills `parentIds`** (and `childrenIds` stays empty): the display relies on `parentIds`, and any script looking for children must start from the children's `parentIds`. New writes must keep both sides consistent (see `addPerson` / `removePerson` in `src/hooks/useFamily.tsx`).
+- Partial ISO dates: `"1842"`, `"1842-03"`, `"1842-03-15"`.
+- Places: `birthPlace` (full Nominatim text), `birthPlaceDisplay` (displayed historical name), `birthCoordinates`, plus structured fields `birthCity`, `birthCountryCode`, `birthCountry`, `birthPostcode`, `birthCounty`, `birthDeptCode` (same for `death*`, and without prefix for `Marriage`).
+- `review` (optional): "to review" marker set by an import on a **draft tree** (`status` new/updated/conflict, `sources` = photos, `notes`, `changes`, `uncertain`). The app highlights these cards, lists them with the "Next to review" button, and the panel's "Mark as reviewed" button removes the marker. This field must not go to production as is.
+- On loading a tree, `backfillAddressFields` reverse-geocodes (Nominatim, 1 req/s) people with coordinates but no city, then saves the tree again.
 
-## Brouillons d'import (`drafts/`, git-ignoré)
+## Import drafts (`drafts/`, git-ignored)
 
-Pour ajouter beaucoup de personnes (par exemple depuis des photos d'un arbre papier), on ne touche pas à la prod : on crée un **dossier de données local** avec un arbre brouillon, sous un id différent de l'arbre réel.
+To add many people (for example from photos of a paper tree), production is not touched: create a **local data directory** with a draft tree, under an id different from the real tree.
 
-- `drafts/photos-20260927/` : transcription des 42 photos `images/2026092*.jpg` de l'arbre papier des ascendants de a relative (768 nouvelles personnes). Il est construit à partir de l'instantané `backups/prod-20260927-215026`. Les photos sources sont dans `sources/`, rattachées à chaque personne comme documents.
-- `drafts/<nom>/_import/` : saisie brute (`ocr.dsl`, une ligne par personne et par union), scripts `merge.py` (rapprochement avec la prod, champs `review`) et `geo.py` (géocodage Nominatim en cache), et notes de lecture.
-- Lancer : `cd api && LOCAL_DATA_DIR=../drafts/photos-20260927 node server.js`, puis `npm run dev`. On se connecte avec les comptes habituels (`_users.json` est copié de la prod).
-- **Le brouillon photos est aussi en prod depuis le 28 sept. 2026**, comme arbre séparé `draft-tree-id-….json` (« Martin — brouillon photos »), pour que l'utilisateur puisse le relire en ligne. C'est la version en ligne qui fait foi, pas le dossier local. Version envoyée : `drafts/photos-20260927-prod/`. Les 134 personnes reprises de la prod y ont des ids propres, `uuid5(NAMESPACE_URL, "genealogy-draft:photos-20260927:<idProd>")`, recalculables à la fusion (table dans `_import-idmap.json`, locale seulement). Leurs documents ne partagent donc rien avec l'arbre réel. Les photos sources sont dans `gs://…/sources/photos-20260927/` et sont partagées par plusieurs fiches : supprimer une de ces photos depuis une fiche la supprime pour toutes (la route DELETE efface le fichier `gcsPath`).
-- Reporter un brouillon relu vers la prod demande une fusion avec l'arbre de prod **à jour** (il a pu changer entre-temps), une sauvegarde préalable et l'accord explicite de l'utilisateur.
+- `drafts/photos-20260927/`: transcription of the 42 photos `images/2026092*.jpg` of the paper tree of the ancestors of a relative (768 new people). It is built from the snapshot `backups/prod-20260927-215026`. The source photos are in `sources/`, attached to each person as documents.
+- `drafts/<name>/_import/`: raw entry (`ocr.dsl`, one line per person and per union), scripts `merge.py` (matching with production, `review` fields) and `geo.py` (cached Nominatim geocoding), and reading notes.
+- Run: `cd api && LOCAL_DATA_DIR=../drafts/photos-20260927 node server.js`, then `npm run dev`. Log in with the usual accounts (`_users.json` is copied from production).
+- **The photo draft has also been in production since Sept. 28, 2026**, as a separate tree `draft-tree-id-….json` ("Martin — brouillon photos"), so that the user can review it online. The online version is the reference, not the local directory. Version sent: `drafts/photos-20260927-prod/`. The 134 people taken from production have their own ids there, `uuid5(NAMESPACE_URL, "genealogy-draft:photos-20260927:<prodId>")`, which can be recomputed at merge time (table in `_import-idmap.json`, local only). Their documents therefore share nothing with the real tree. The source photos are in `gs://…/sources/photos-20260927/` and are shared by several pages: deleting one of these photos from a page deletes it for all of them (the DELETE route removes the `gcsPath` file).
+- Bringing a reviewed draft to production requires a merge with the **up-to-date** production tree (it may have changed in the meantime), a prior backup and the user's explicit agreement.
 
-## Flux de sauvegarde
+## Save flow
 
-`useFamily` garde l'arbre en état React ; chaque modification appelle `persist()` qui fait un `PUT /api/trees/:id` avec l'arbre **complet** (écrasement total, pas de fusion).
+`useFamily` keeps the tree in React state; each change calls `persist()`, which does a `PUT /api/trees/:id` with the **complete** tree (full overwrite, no merge).
 
-Protection contre l'écrasement : le JSON de l'arbre porte un champ `version`, que l'API incrémente à chaque écriture (`PUT` et `PATCH`). Le front envoie `baseVersion` (la version qu'il a chargée) ; si l'arbre a changé entre-temps, l'API répond **409** et n'écrit rien, et le front affiche un bandeau « Recharger l'arbre » (la modification refusée est perdue, il n'y a pas de fusion). Les sauvegardes d'un même arbre partent une par une (`persistTree` / `flushSaves` dans `useFamily.tsx`). Un client qui n'envoie pas `baseVersion` garde l'ancien comportement (le dernier qui écrit gagne), donc front et API peuvent être déployés dans n'importe quel ordre. Le verrou côté API est par instance Cloud Run : deux instances simultanées pourraient encore se croiser.
+Overwrite protection: the tree's JSON carries a `version` field, which the API increments on each write (`PUT` and `PATCH`). The front end sends `baseVersion` (the version it loaded); if the tree has changed in the meantime, the API answers **409** and writes nothing, and the front end shows a "Reload the tree" banner (the rejected change is lost, there is no merge). Saves of the same tree go out one at a time (`persistTree` / `flushSaves` in `useFamily.tsx`). A client that does not send `baseVersion` keeps the old behavior (last writer wins), so front end and API can be deployed in any order. The API-side lock is per Cloud Run instance: two simultaneous instances could still cross.
 
-## API (toutes les routes sauf login exigent `Authorization: Bearer <jwt>`)
+## API (all routes except login require `Authorization: Bearer <jwt>`)
 
 - `POST /api/login`, `GET /api/me`
 - `GET /api/trees`, `GET /api/trees/:id`
-- `POST|PUT|PATCH|DELETE /api/trees[/:id]` — rôle `editor`
-- `GET /api/persons/:personId/documents[/:docId]` — `?download=1` réservé aux éditeurs
-- `POST|DELETE /api/persons/:personId/documents[/:docId]` — rôle `editor`
+- `POST|PUT|PATCH|DELETE /api/trees[/:id]`: `editor` role
+- `GET /api/persons/:personId/documents[/:docId]`: `?download=1` reserved for editors
+- `POST|DELETE /api/persons/:personId/documents[/:docId]`: `editor` role
 
-Rôles : `editor` (tout) et `viewer` (lecture seule, documents affichés inline sans téléchargement).
+Roles: `editor` (everything) and `viewer` (read-only, documents shown inline without download).
 
-## Lancer en local
+## Running locally
 
 ```bash
 # API (terminal 1)
 cd api && npm install
-LOCAL_DATA_DIR=./.localdata node server.js      # SEED_USERS='[...]' seulement si le dossier est vide
+LOCAL_DATA_DIR=./.localdata node server.js      # SEED_USERS='[...]' only if the directory is empty
 
-# Front (terminal 2)
+# Front end (terminal 2)
 npm install && npm run dev                      # http://localhost:5173/genealogy/
 ```
 
-Vérifications : `npm run build` (inclut `tsc -b`) et `npm run lint`. Il n'y a pas de tests.
+Checks: `npm run build` (includes `tsc -b`) and `npm run lint`. There are no tests.
 
-## Carte du code front
+## Front-end code map
 
-- `src/App.tsx` — en-tête (sélecteur d'arbres, recherche, incohérences), onglets Arbre/Carte/Statistiques, bandeau de conflit, garde d'authentification.
-- `src/hooks/useFamily.tsx` — état de l'arbre, appels API, CRUD personnes/mariages, backfill géocodage.
-- `src/hooks/useAuth.tsx` — login JWT. `src/hooks/useI18n.tsx` — traductions FR/EN (ajouter toute nouvelle chaîne dans les deux langues).
-- `src/utils/treeLayout.ts` — géométrie de l'arbre : cartes `person` + nœuds `union` (couple), positionnés par dagre. Le résultat de dagre (~1 s pour 900 personnes) est gardé en cache tant que les liens ne changent pas.
-- `src/utils/treeFold.ts` — pliage : on n'affiche que la personne de départ (`me`, sinon la personne sans enfant qui a le plus d'ascendants), N générations au-dessus (4 par défaut) et les branches dépliées à la main. C'est un filtre d'affichage, il n'écrit rien dans l'arbre.
-- `src/utils/treeRenderer.ts` — rendu de l'arbre sur un `<canvas>` (déplacement, zoom, clics, mini-carte), hors de React. Les cartes ne sont pas des éléments DOM : leur apparence est dans ce fichier, pas dans le CSS.
-- `src/utils/checks.ts` — détection d'incohérences (dates et liens impossibles), en lecture seule ; affichée par `IssuesMenu` (en-tête) et dans `DetailPanel`. Les seuils (âges limites) sont en tête du fichier.
-- `src/utils/stats.ts` + `StatsView` — onglet Statistiques (barres en HTML/CSS, pas de bibliothèque de graphiques).
-- `src/components/` — `SearchBox` (recherche par nom, raccourci `/`), `TreeView` (barre d'outils, menu contextuel), `TreeCanvas` (enveloppe React du renderer), `MapView` (épingles, curseur temporel, mode « vivants cette année-là », lignes de migration), `DetailPanel`, `AddPersonForm`, `PlaceAutocomplete` (recherche Nominatim), `DocumentGallery`, `LoginPage`.
-- Styles : un seul `src/index.css` (thème « patrimoine »).
+- `src/App.tsx`: header (tree selector, search, inconsistencies), Tree/Map/Statistics tabs, conflict banner, authentication guard.
+- `src/hooks/useFamily.tsx`: tree state, API calls, people/marriage CRUD, geocoding backfill.
+- `src/hooks/useAuth.tsx`: JWT login. `src/hooks/useI18n.tsx`: FR/EN translations (add any new string in both languages).
+- `src/utils/treeLayout.ts`: tree geometry: `person` cards + `union` (couple) nodes, positioned by dagre. The dagre result (~1 s for 900 people) is cached as long as the links do not change.
+- `src/utils/treeFold.ts`: folding: only the starting person is shown (`me`, otherwise the childless person with the most ancestors), N generations above (4 by default) and the branches unfolded by hand. It is a display filter, it writes nothing to the tree.
+- `src/utils/treeRenderer.ts`: rendering of the tree on a `<canvas>` (pan, zoom, clicks, minimap), outside React. Cards are not DOM elements: their appearance is in this file, not in the CSS.
+- `src/utils/checks.ts`: detection of inconsistencies (impossible dates and links), read-only; shown by `IssuesMenu` (header) and in `DetailPanel`. The thresholds (age limits) are at the top of the file.
+- `src/utils/stats.ts` + `StatsView`: Statistics tab (HTML/CSS bars, no chart library).
+- `src/components/`: `SearchBox` (search by name, shortcut `/`), `TreeView` (toolbar, context menu), `TreeCanvas` (React wrapper of the renderer), `MapView` (pins, time slider, "alive that year" mode, migration lines), `DetailPanel`, `AddPersonForm`, `PlaceAutocomplete` (Nominatim search), `DocumentGallery`, `LoginPage`.
+- Styles: a single `src/index.css` ("heritage" theme).
 
-## Points d'attention connus
+## Known points of attention
 
-- La révision Cloud Run `genealogy-api-00010` (7 sept.) n'a jamais démarré, parce que le Dockerfile ne copiait pas `localBucket.js`. C'est corrigé, et la révision `00013` a été déployée le 27 sept. Tout nouveau déploiement doit copier tous les `.js` dont `server.js` a besoin.
-- Les noms de documents avec accents ou caractères non ASCII faisaient échouer l'affichage (erreur 500 sur `Content-Disposition`). C'est corrigé dans `api/server.js` (encodage RFC 6266), mais il faut **redéployer l'API** pour que la prod en profite.
-- `JWT_SECRET` doit être défini comme variable d'environnement du service Cloud Run (il ne figure pas dans le repo). `cloudbuild.yaml` utilise `--update-env-vars` pour ne pas l'effacer à chaque déploiement : ne pas revenir à `--set-env-vars`, qui remplace toutes les variables. Sans ce secret, l'API utilise la valeur publique `dev-secret-change-me` et n'importe qui peut forger un jeton `editor`.
-- CORS autorise uniquement `hadrient.github.io` et localhost.
+- Cloud Run revision `genealogy-api-00010` (Sept. 7) never started, because the Dockerfile did not copy `localBucket.js`. This is fixed, and revision `00013` was deployed on Sept. 27. Any new deployment must copy all the `.js` files that `server.js` needs.
+- Document names with accents or non-ASCII characters made display fail (error 500 on `Content-Disposition`). This is fixed in `api/server.js` (RFC 6266 encoding), but the API must be **redeployed** for production to benefit.
+- `JWT_SECRET` must be set as an environment variable of the Cloud Run service (it is not in the repository). `cloudbuild.yaml` uses `--update-env-vars` so as not to erase it on each deployment: do not go back to `--set-env-vars`, which replaces all variables. Without this secret, the API uses the public value `dev-secret-change-me` and anyone can forge an `editor` token.
+- CORS only allows `hadrient.github.io` and localhost.

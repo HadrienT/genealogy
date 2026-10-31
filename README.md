@@ -90,3 +90,7 @@ npm run backup:prod   # → backups/prod-<timestamp>/ (git-ignored)
 | Tree layout | @dagrejs/dagre (layered DAG) |
 | Map | react-leaflet + Leaflet |
 | IDs | uuid |
+
+## License
+
+[MIT](LICENSE)
