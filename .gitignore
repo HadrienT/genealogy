@@ -25,6 +25,10 @@ data/trees/
 api/.localdata/
 # Snapshots of the production bucket (scripts/backup-prod.sh) — real family data, never commit
 backups/
+# Photos of the paper family tree — real family data, never commit
+images/
+# Real project, bucket and tree names — the repository is public
+CLAUDE.local.md
 # Local draft trees (imports to review before they go to production) — real family data, never commit
 drafts/
 *.suo

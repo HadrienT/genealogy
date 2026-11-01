@@ -6,8 +6,10 @@
 #   cd api && LOCAL_DATA_DIR=../backups/prod-<timestamp> node server.js
 set -euo pipefail
 
-BUCKET="${GCS_BUCKET:-my-gcp-project-genealogy-data}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The bucket name stays out of the public repository: set it in .env.local (git-ignored).
+[ -f "$ROOT/.env.local" ] && source "$ROOT/.env.local"
+BUCKET="${GCS_BUCKET:?Set GCS_BUCKET in .env.local}"
 DEST="$ROOT/backups/prod-$(date +%Y%m%d-%H%M%S)"
 
 mkdir -p "$DEST"

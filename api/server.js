@@ -30,6 +30,11 @@ if (LOCAL_DATA_DIR) {
   console.log(`Storage: local filesystem → ${LOCAL_DATA_DIR}`);
 }
 
+// The dev fallback is public: outside local dev it would let anyone forge a token.
+if (!LOCAL_DATA_DIR && !process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET must be set when using the GCS bucket");
+}
+
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 app.use(
