@@ -2,6 +2,8 @@
 
 Interactive family tree viewer with a birth map.
 
+**[How it works: interactive map](https://hadrient.github.io/atlas-pages/genealogy/)**
+
 ## Features
 
 - **Tree View** — Pannable & zoomable family tree (ReactFlow). Click a person to see details.
